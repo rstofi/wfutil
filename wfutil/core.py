@@ -362,7 +362,7 @@ dimension sizes are different for the {0:d} element of the input list'.format(i)
             
                 data_array_mask = ma.getmaskarray(data_arrays_to_merge_list[i])
 
-                #Thois is just passing the name but using actually a masked object
+                #This is just a namespace for convinience
                 data_array_values = data_arrays_to_merge_list[i]
 
             else:
@@ -388,23 +388,32 @@ dimension sizes are different for the {0:d} element of the input list'.format(i)
             for c in range(0,np.size(chan_mapped_index_list[i])):
                 merged_data_array[time_mapped_index_list[i][t],
                                 chan_mapped_index_list [i][c]] = \
-                                data_array_values[t,c]
+                                ma.getdata(data_array_values[t,c])
 
                 if masked:
                     mapped_mask[time_mapped_index_list[i][t],
                                 chan_mapped_index_list [i][c]] = \
                                 data_array_mask[t,c]
 
-        #Apply the joint master mask and current mask
+        #Create the joint master mask and current mask
         if masked:
             master_mask = ma.mask_or(master_mask, mapped_mask)
-            merged_data_array = ma.masked_array(merged_data_array,master_mask)
+            #merged_data_array = ma.masked_array(merged_data_array,master_mask)
 
         #For quick and dirty testing for masked arrays
-        print(merged_data_array)
+        #print(merged_data_array)
         #print(type(merged_data_array))
         #For masked arrays case
-        print(ma.getdata(merged_data_array))
+        #print(ma.getdata(merged_data_array))
+
+    if masked:
+        merged_data_array = ma.masked_array(merged_data_array,master_mask)
+
+        #print(merged_data_array)
+    #print(ma.getdata(merged_data_array))
+
+    return merged_data_array
+
 
 #=== MAIN ===
 
@@ -413,7 +422,7 @@ dimension sizes are different for the {0:d} element of the input list'.format(i)
 #Quick and dirty testing
 test_saving = False
 test_map_and_merge = False
-test_map_data_arrays = True
+test_map_data_arrays = False
 
 if test_map_data_arrays:
     
@@ -433,7 +442,7 @@ if test_map_data_arrays:
 
     d2 = ma.masked_array(d2,d2_mask)
 
-    d3 = np.array([[4],[0],[4]])
+    d3 = np.array([[4],[5],[4]])
     t3 = np.array([0,2,4])
     c3 = np.array([10])
 
@@ -459,13 +468,15 @@ if test_map_data_arrays:
     #print(merged_chan)
     #print(merged_darr)
 
-    map_data_arrays(merged_data_array=merged_darr,
+    merged_darr = map_data_arrays(merged_data_array=merged_darr,
                     merged_time_array=merged_time,
                     merged_chan_array=merged_chan,
                     data_arrays_to_merge_list=data_arrays_to_map,
                     time_mapped_index_list=mapped_time_indices,
                     chan_mapped_index_list=mapped_chan_indices,
                     masked=True)
+
+    print(merged_darr)
 
 
 if test_map_and_merge:
