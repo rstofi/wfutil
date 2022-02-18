@@ -20,7 +20,8 @@ TO DO: add a function that creates the mapping index given a merged 1D array and
 
 """
 
-__all__ = ['WFdata', 'load_WFdata', 'map_and_merge_1D', 'map_data_arrays']
+__all__ = ['WFdata', 'load_WFdata', 'map_and_merge_1D', 'map_data_arrays',
+            'merge_WFdata']
 
 
 import os
