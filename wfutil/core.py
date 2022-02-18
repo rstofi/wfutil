@@ -307,8 +307,8 @@ class WFdata(object):
     time_array: <numpy.NdArray>
         [N x 1] sized time axis array.
 
-    pol_array: <numpy.NdArray>
-        [N x 1] sized channel axis array.
+    chan_array: <numpy.NdArray>
+        [M x 1] sized channel axis array.
 
     wf_desc: dict, optional
         A dictionary containing the data units and the axis frames. It can be used
@@ -385,7 +385,7 @@ WF description (wf_descr)!'.format(WF_DESC))
         self.data_shape = np.shape(self.data_array)
 
         #TO do add special case for polarisation handling for Intensity (i.e. no pol)
-        if self.data_shape[0] != np.size(self.pol_array):
+        if self.data_shape[0] != len(self.pol_array):
             raise ValueError('Data array pol dimension and pol array dimension are not equal!')
 
         if self.data_shape[1] != np.size(self.time_array):
@@ -414,13 +414,7 @@ WF description (wf_descr)!'.format(WF_DESC))
     def get_pol_slice(self,pol_val):
         """Routine to sub-select a polariastion from the `data_array` 
         """
-        print(np.where(self.pol_array == pol_val))
-
-        #HERE IS THE BUG I NEED TO WORK ON...
-
         p = np.where(self.pol_array == pol_val)[0][0]
-        
-        print(p)
         pol_slice_data_array = self.data_array[p,...]
 
         return pol_slice_data_array
@@ -646,7 +640,7 @@ with size {1:d} and pol frame of {2:s}!'.format(i, np.size(WFD.pol_array),
         
         merged_data_array_pol_slice = merged_WFdata.get_pol_slice(pol_val)
 
-        print(merged_data_array_pol_slice)
+        #print(merged_data_array_pol_slice)
 
         #Get the list of the arrays
         data_arrays_to_map = []
@@ -684,7 +678,7 @@ if __name__ == "__main__":
 test_saving = False
 test_map_and_merge = False
 test_map_data_arrays = False
-test_merge_WFdata = True
+test_merge_WFdata = False
 
 if test_merge_WFdata:
 
@@ -695,7 +689,7 @@ if test_merge_WFdata:
 
     d1 = ma.masked_array(d1,m1)
 
-    p1 = ['a','b']
+    p1 = np.array(['a','b'])
     t1 = np.array([1,2])
     c1 = np.array([1,3])
 
@@ -711,7 +705,7 @@ if test_merge_WFdata:
 
     d2 = ma.masked_array(d2,m2)
 
-    p2 = ['a','b']
+    p2 = np.array(['a','b'])
     t2 = np.array([3,4])
     c2 = np.array([2,3])
 
