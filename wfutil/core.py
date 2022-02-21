@@ -386,7 +386,7 @@ WF description (wf_descr)!'.format(WF_DESC))
         self.data_shape = np.shape(self.data_array)
 
         #TO do add special case for polarisation handling for Intensity (i.e. no pol)
-        if self.data_shape[0] != len(self.pol_array):
+        if self.data_shape[0] != np.size(self.pol_array):
             raise ValueError('Data array pol dimension and pol array dimension are not equal!')
 
         if self.data_shape[1] != np.size(self.time_array):
@@ -419,6 +419,28 @@ WF description (wf_descr)!'.format(WF_DESC))
         pol_slice_data_array = self.data_array[p,...]
 
         return pol_slice_data_array
+
+    def add_wfdesc_item(self,desc_key, desc_val):
+        """Add a key-value pair to the `wf_desc` instance dictionary
+        """
+        self.wf_desc[desc_key] = desc_val
+
+    def apply_mask(self,new_mask):
+        """Apply a boolean mask to the `WFdata` using a mask of the same size as
+        the data
+
+        NOTE: if the data is already masked, the existing mask will be overwritten!
+        """
+        if self.wf_desc['Masked'] == 'True':
+            #TO DO: raise warning here
+            
+            #Remove old mask and apply new one
+            self.data_array.mask = new_mask
+        else:
+            self.wf_desc['Masked'] = 'True'
+
+            self.data_array = ma.masked_array(self.data_array,
+                                            new_mask)
 
     def save_WFdata(self, output_path, WFdata_name, overwrite=True, compressed=True):
         """Write the WFdata to disc. The basic format is a .npz file, i.e. a
@@ -619,9 +641,9 @@ with size {1:d} and pol frame of {2:s}!'.format(i, np.size(WFD.pol_array),
 
     else:
         merged_data_array = \
-        np.zeros(np.shape((np.size(merged_pol_array),
-                            np.size(merged_time_array),
-                            np.size(merged_chan_array))))
+        np.zeros((np.size(merged_pol_array),
+                np.size(merged_time_array),
+                np.size(merged_chan_array)))
 
     #=== Create an empty WFdata object
     merged_WFdata = WFdata(data_array = merged_data_array,
@@ -680,6 +702,57 @@ test_saving = False
 test_map_and_merge = False
 test_map_data_arrays = False
 test_merge_WFdata = False
+test_add_wfdesc_item = False
+test_apply_mask = True
+
+if test_apply_mask:
+    d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
+    m1 = np.array([[[True,False],[False,False]],
+                    [[False,True],[False,False]]])
+
+    d1 = ma.masked_array(d1,m1)
+
+    p1 = np.array(['a','b'])
+    t1 = np.array([1,2])
+    c1 = np.array([1,3])
+
+    WFd1 = WFdata(data_array = d1,
+                time_array = t1,
+                chan_array = c1,
+                pol_array = p1)
+
+
+    print(WFd1.wf_desc['Masked'], type(WFd1.data_array))
+    print(WFd1.data_array)
+
+    m2 = np.array([[[False,True],[False,False]],
+                    [[False,True],[False,False]]])
+
+    WFd1.apply_mask(m2)
+
+    print(WFd1.wf_desc['Masked'], type(WFd1.data_array))
+    print(WFd1.data_array)
+
+
+if test_add_wfdesc_item:
+    d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
+    m1 = np.array([[[True,False],[False,False]],
+                    [[False,True],[False,False]]])
+
+    d1 = ma.masked_array(d1,m1)
+
+    p1 = np.array(['a','b'])
+    t1 = np.array([1,2])
+    c1 = np.array([1,3])
+
+    WFd1 = WFdata(data_array = d1,
+                time_array = t1,
+                chan_array = c1,
+                pol_array = p1)
+
+    WFd1.add_wfdesc_item('Ant', 'm001')
+
+    print(WFd1.wf_desc['Ant'])
 
 if test_merge_WFdata:
 
