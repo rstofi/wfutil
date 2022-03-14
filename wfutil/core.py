@@ -26,8 +26,11 @@ __all__ = ['WFdata', 'load_WFdata', 'map_and_merge_1D', 'map_data_arrays',
 
 import os
 import copy
+import logging
 import numpy as np
 import numpy.ma as ma
+
+import wfutil as wf
 
 #=== Globals ===
 global _WF_DESC_COMPULSORY
@@ -637,13 +640,14 @@ with size {1:d} and pol frame of {2:s}!'.format(i, np.size(WFD.pol_array),
         np.ma.array(np.zeros((np.size(merged_pol_array),
                             np.size(merged_time_array),
                             np.size(merged_chan_array))),
-        mask=False)
+        mask=False, dtype=type(WFdata_to_merge_list[0].data_array[0,0,0]))
 
     else:
         merged_data_array = \
         np.zeros((np.size(merged_pol_array),
                 np.size(merged_time_array),
-                np.size(merged_chan_array)))
+                np.size(merged_chan_array)),
+        dtype=type(WFdata_to_merge_list[0].data_array[0,0,0]))
 
     #=== Create an empty WFdata object
     merged_WFdata = WFdata(data_array = merged_data_array,
@@ -692,217 +696,219 @@ with size {1:d} and pol frame of {2:s}!'.format(i, np.size(WFD.pol_array),
 if __name__ == "__main__":
     pass
 
+    exit()
+
 #*******************************************************************************
-#=== Quick and dirty testing ===
+    #=== Quick and dirty testing ===
 
-#TO DO write real testing module
+    #TO DO write real testing module
 
-#Quick and dirty testing
-test_saving = False
-test_map_and_merge = False
-test_map_data_arrays = False
-test_merge_WFdata = False
-test_add_wfdesc_item = False
-test_apply_mask = True
+    #Quick and dirty testing
+    test_saving = False
+    test_map_and_merge = False
+    test_map_data_arrays = False
+    test_merge_WFdata = False
+    test_add_wfdesc_item = False
+    test_apply_mask = True
 
-if test_apply_mask:
-    d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
-    m1 = np.array([[[True,False],[False,False]],
-                    [[False,True],[False,False]]])
+    if test_apply_mask:
+        d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
+        m1 = np.array([[[True,False],[False,False]],
+                        [[False,True],[False,False]]])
 
-    d1 = ma.masked_array(d1,m1)
+        d1 = ma.masked_array(d1,m1)
 
-    p1 = np.array(['a','b'])
-    t1 = np.array([1,2])
-    c1 = np.array([1,3])
+        p1 = np.array(['a','b'])
+        t1 = np.array([1,2])
+        c1 = np.array([1,3])
 
-    WFd1 = WFdata(data_array = d1,
-                time_array = t1,
-                chan_array = c1,
-                pol_array = p1)
+        WFd1 = WFdata(data_array = d1,
+                    time_array = t1,
+                    chan_array = c1,
+                    pol_array = p1)
 
 
-    print(WFd1.wf_desc['Masked'], type(WFd1.data_array))
-    print(WFd1.data_array)
+        print(WFd1.wf_desc['Masked'], type(WFd1.data_array))
+        print(WFd1.data_array)
 
-    m2 = np.array([[[False,True],[False,False]],
-                    [[False,True],[False,False]]])
+        m2 = np.array([[[False,True],[False,False]],
+                        [[False,True],[False,False]]])
 
-    WFd1.apply_mask(m2)
+        WFd1.apply_mask(m2)
 
-    print(WFd1.wf_desc['Masked'], type(WFd1.data_array))
-    print(WFd1.data_array)
+        print(WFd1.wf_desc['Masked'], type(WFd1.data_array))
+        print(WFd1.data_array)
 
 
-if test_add_wfdesc_item:
-    d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
-    m1 = np.array([[[True,False],[False,False]],
-                    [[False,True],[False,False]]])
+    if test_add_wfdesc_item:
+        d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
+        m1 = np.array([[[True,False],[False,False]],
+                        [[False,True],[False,False]]])
 
-    d1 = ma.masked_array(d1,m1)
+        d1 = ma.masked_array(d1,m1)
 
-    p1 = np.array(['a','b'])
-    t1 = np.array([1,2])
-    c1 = np.array([1,3])
+        p1 = np.array(['a','b'])
+        t1 = np.array([1,2])
+        c1 = np.array([1,3])
 
-    WFd1 = WFdata(data_array = d1,
-                time_array = t1,
-                chan_array = c1,
-                pol_array = p1)
+        WFd1 = WFdata(data_array = d1,
+                    time_array = t1,
+                    chan_array = c1,
+                    pol_array = p1)
 
-    WFd1.add_wfdesc_item('Ant', 'm001')
+        WFd1.add_wfdesc_item('Ant', 'm001')
 
-    print(WFd1.wf_desc['Ant'])
+        print(WFd1.wf_desc['Ant'])
 
-if test_merge_WFdata:
+    if test_merge_WFdata:
 
-    #First WFData
-    d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
-    m1 = np.array([[[True,False],[False,False]],
-                    [[False,True],[False,False]]])
+        #First WFData
+        d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
+        m1 = np.array([[[True,False],[False,False]],
+                        [[False,True],[False,False]]])
 
-    d1 = ma.masked_array(d1,m1)
+        d1 = ma.masked_array(d1,m1)
 
-    p1 = np.array(['a','b'])
-    t1 = np.array([1,2])
-    c1 = np.array([1,3])
+        p1 = np.array(['a','b'])
+        t1 = np.array([1,2])
+        c1 = np.array([1,3])
 
-    WFd1 = WFdata(data_array = d1,
-                time_array = t1,
-                chan_array = c1,
-                pol_array = p1)
+        WFd1 = WFdata(data_array = d1,
+                    time_array = t1,
+                    chan_array = c1,
+                    pol_array = p1)
 
-    #Second WFData
-    d2 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
-    m2 = np.array([[[True,False],[False,False]],
-                    [[False,True],[False,False]]])
+        #Second WFData
+        d2 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
+        m2 = np.array([[[True,False],[False,False]],
+                        [[False,True],[False,False]]])
 
-    d2 = ma.masked_array(d2,m2)
+        d2 = ma.masked_array(d2,m2)
 
-    p2 = np.array(['a','b'])
-    t2 = np.array([3,4])
-    c2 = np.array([2,3])
+        p2 = np.array(['a','b'])
+        t2 = np.array([3,4])
+        c2 = np.array([2,3])
 
-    WFd2 = WFdata(data_array = d2,
-                time_array = t2,
-                chan_array = c2,
-                pol_array = p2)
+        WFd2 = WFdata(data_array = d2,
+                    time_array = t2,
+                    chan_array = c2,
+                    pol_array = p2)
 
-    #Merge them
-    WFd_to_merge_list = [WFd1, WFd2]
+        #Merge them
+        WFd_to_merge_list = [WFd1, WFd2]
 
-    merged_WFd = merge_WFdata(WFd_to_merge_list)
+        merged_WFd = merge_WFdata(WFd_to_merge_list)
 
-    print(merged_WFd.pol_array)
-    print(merged_WFd.time_array)
-    print(merged_WFd.chan_array)
-    print(merged_WFd.data_array)
+        print(merged_WFd.pol_array)
+        print(merged_WFd.time_array)
+        print(merged_WFd.chan_array)
+        print(merged_WFd.data_array)
 
 
-#Tests
-if test_map_data_arrays:
-    
-    d1 = np.array([[1,3,1],[1,1,1]])
-    t1 = np.array([2,1])
-    c1 = np.array([10,20,30])
+    #Tests
+    if test_map_data_arrays:
+        
+        d1 = np.array([[1,3,1],[1,1,1]])
+        t1 = np.array([2,1])
+        c1 = np.array([10,20,30])
 
-    d1_mask = np.array([[True, False, False],[False, False, False]])
+        d1_mask = np.array([[True, False, False],[False, False, False]])
 
-    d1 = ma.masked_array(d1,d1_mask)
+        d1 = ma.masked_array(d1,d1_mask)
 
-    d2 = np.array([[2,2],[2,0]])
-    t2 = np.array([0,2])
-    c2 = np.array([10,20])
+        d2 = np.array([[2,2],[2,0]])
+        t2 = np.array([0,2])
+        c2 = np.array([10,20])
 
-    d2_mask = np.array([[False, False],[False, True]])
+        d2_mask = np.array([[False, False],[False, True]])
 
-    d2 = ma.masked_array(d2,d2_mask)
+        d2 = ma.masked_array(d2,d2_mask)
 
-    d3 = np.array([[4],[5],[4]])
-    t3 = np.array([0,2,4])
-    c3 = np.array([10])
+        d3 = np.array([[4],[5],[4]])
+        t3 = np.array([0,2,4])
+        c3 = np.array([10])
 
-    d3_mask = np.array([[False],[False],[False]]) 
+        d3_mask = np.array([[False],[False],[False]]) 
 
-    d3 = ma.masked_array(d3,d3_mask)
+        d3 = ma.masked_array(d3,d3_mask)
 
-    data_arrays_to_map = [d1,d2,d3]
-    time_arrays_to_map = [t1,t2,t3]
-    chan_arrays_to_map = [c1,c2,c3]
+        data_arrays_to_map = [d1,d2,d3]
+        time_arrays_to_map = [t1,t2,t3]
+        chan_arrays_to_map = [c1,c2,c3]
 
-    #Create merged axes
-    merged_time, mapped_time_indices = map_and_merge_1D(time_arrays_to_map)
-    merged_chan, mapped_chan_indices = map_and_merge_1D(chan_arrays_to_map)
+        #Create merged axes
+        merged_time, mapped_time_indices = map_and_merge_1D(time_arrays_to_map)
+        merged_chan, mapped_chan_indices = map_and_merge_1D(chan_arrays_to_map)
 
-    #print(mapped_time_indices)
-    #print(mapped_chan_indices)
+        #print(mapped_time_indices)
+        #print(mapped_chan_indices)
 
-    #Create merged empty data array
-    merged_darr = ma.masked_array(np.zeros((np.size(merged_time),np.size(merged_chan))))
+        #Create merged empty data array
+        merged_darr = ma.masked_array(np.zeros((np.size(merged_time),np.size(merged_chan))))
 
-    #print(merged_time)
-    #print(merged_chan)
-    #print(merged_darr)
+        #print(merged_time)
+        #print(merged_chan)
+        #print(merged_darr)
 
-    merged_darr = map_data_arrays(merged_data_array=merged_darr,
-                    merged_time_array=merged_time,
-                    merged_chan_array=merged_chan,
-                    data_arrays_to_merge_list=data_arrays_to_map,
-                    time_mapped_index_list=mapped_time_indices,
-                    chan_mapped_index_list=mapped_chan_indices)
+        merged_darr = map_data_arrays(merged_data_array=merged_darr,
+                        merged_time_array=merged_time,
+                        merged_chan_array=merged_chan,
+                        data_arrays_to_merge_list=data_arrays_to_map,
+                        time_mapped_index_list=mapped_time_indices,
+                        chan_mapped_index_list=mapped_chan_indices)
 
-    print(merged_darr)
+        print(merged_darr)
 
 
-if test_map_and_merge:
-    a = np.array([1,2,5])
-    b = np.array([2,3])
-    c = np.array([4,1])
+    if test_map_and_merge:
+        a = np.array([1,2,5])
+        b = np.array([2,3])
+        c = np.array([4,1])
 
-    arrays_to_map = [a,b,c]
+        arrays_to_map = [a,b,c]
 
-    merged_array, mapped_indices = map_and_merge_1D(arrays_to_map)
+        merged_array, mapped_indices = map_and_merge_1D(arrays_to_map)
 
-    print(type(merged_array), merged_array)
-    print(type(mapped_indices), mapped_indices)
+        print(type(merged_array), merged_array)
+        print(type(mapped_indices), mapped_indices)
 
-#Test saving features
-if test_saving:
-    working_dir = './'
-    test_file_name = 'test'
+    #Test saving features
+    if test_saving:
+        working_dir = './'
+        test_file_name = 'test'
 
-    datarr = np.array([[[1,1],[1,0],[0,0]],
-                        [[1,0],[0,1],[0,0]]],dtype=complex)
+        datarr = np.array([[[1,1],[1,0],[0,0]],
+                            [[1,0],[0,1],[0,0]]],dtype=complex)
 
-    dmask = np.array([[[True,False],[False,False],[False,False]],
-            [[False,False],[False,False],[False,True]]], dtype=bool)
+        dmask = np.array([[[True,False],[False,False],[False,False]],
+                [[False,False],[False,False],[False,True]]], dtype=bool)
 
-    masked_datarr = ma.masked_array(datarr,dmask)
-    #masked_datarr = datarr
+        masked_datarr = ma.masked_array(datarr,dmask)
+        #masked_datarr = datarr
 
-    tarr = np.array([0,1,2])
-    farr = np.array([0,1])
-    polarr = np.array(['XX','YY'])
+        tarr = np.array([0,1,2])
+        farr = np.array([0,1])
+        polarr = np.array(['XX','YY'])
 
-    print(type(datarr[0,0]))
+        print(type(datarr[0,0]))
 
-    a = WFdata(data_array = masked_datarr,
-                time_array = tarr,
-                chan_array = farr,
-                pol_array = polarr)
+        a = WFdata(data_array = masked_datarr,
+                    time_array = tarr,
+                    chan_array = farr,
+                    pol_array = polarr)
 
-    print(type(a.data_array))
+        print(type(a.data_array))
 
-    a.save_WFdata(working_dir,test_file_name,overwrite=True)
+        a.save_WFdata(working_dir,test_file_name,overwrite=True)
 
-    b = load_WFdata(working_dir, test_file_name)
+        b = load_WFdata(working_dir, test_file_name)
 
-    print(type(b.data_array))
-    print(type(b.data_array[0,0,0]))
-    print(type(b.data_array[0,0,1]))
+        print(type(b.data_array))
+        print(type(b.data_array[0,0,0]))
+        print(type(b.data_array[0,0,1]))
 
-    print(np.shape(b.data_array))
+        print(np.shape(b.data_array))
 
-    print(b.data_array[0,...])
+        print(b.data_array[0,...])
 
-    print(ma.getdata(b.data_array[0,...]))
+        print(ma.getdata(b.data_array[0,...]))
