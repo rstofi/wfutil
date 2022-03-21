@@ -143,7 +143,7 @@ def get_chann_array_from_MS(mspath):
         Numpy array containing the channel values
 
     """
-    chan_table_path = wf.msutil.get_MS_subtable_path(MS,'SPECTRAL_WINDOW')
+    chan_table_path = wf.msutil.get_MS_subtable_path(mspath,'SPECTRAL_WINDOW')
 
     chan_table = wf.msutil.create_MS_object(chan_table_path)
 
@@ -168,7 +168,7 @@ def get_antenna_name_list_from_MS(mspath):
         List containing the antenna names
 
     """
-    anttable_path = wf.msutil.get_MS_subtable_path(MS,'ANTENNA')
+    anttable_path = wf.msutil.get_MS_subtable_path(mspath,'ANTENNA')
 
     #Open `ANTENNA` table and read the list of antennas
     anttable = wf.msutil.create_MS_object(anttable_path)
@@ -178,7 +178,7 @@ def get_antenna_name_list_from_MS(mspath):
     return ant_name_list
 
 
-def get_baseline_data(mspath, ant1, ant2, qcolumn):
+def get_baseline_data(mspath, ant1, ant2, qcolumn, apply_flag=False):
     """Core function for retrieveing time-frequency data from an MS. 
 
     The code uses a TAQL query to create a subtable selecting the given columns
@@ -206,29 +206,63 @@ def get_baseline_data(mspath, ant1, ant2, qcolumn):
         The currently supported columns are defined in the `_SUPPORTED_MS_COLUMNS`
         global variable
 
+    apply_flag: bool, opt
+        If True, the flag columns are also read and the flag tables are applied to
+        the data column.
+
+        NOTE currently only works with `qcolumn` == 'DATA'
+
+        if `qcolumn` == 'FLAG' this option is automatically disabled
+        
     Returns
     =======
-    wf_data: <>
+    wf_data: <numpy.Ndarray>
+        The waterfall data matrix for the selected baseline
+
+    tarray: <numpy.Ndarray>
+        The time axis of the waterfall matrix for the selected baseline
 
     """
     #Check if the queried column is supported
     if qcolumn not in _SUPPORTED_MS_COLUMNS:
         raise ValueError('Query the column {0:s} is not supported!'.format(qcolumn))
 
+    #Do not apply flags when the flag table is retriewed
+    if qcolumn == 'FLAG' and apply_flag == True:
+        apply_flag = False
+
     MS = wf.msutil.create_MS_object(mspath)
 
     #Query the data
-    qtable = MS.query(query='ANTENNA1 == {0:d} AND ANTENNA2 == {1:d}'.format(ant1,ant2), 
-                      columns='{0:s},TIME'.format(qcolumn))
+    def query_table(q_ant1, q_ant2, q_qcolumn):
+        """I am not sure if this is a good coding practice, but I want to code the
+        table query only once and not duplicate it...
+        
+        Also I am using sligtly different variable names useful for debugging...
+        """
+        q_qtable = MS.query(query='ANTENNA1 == {0:d} AND ANTENNA2 == {1:d}'.format(
+                         q_ant1,q_ant2), columns='{0:s},TIME'.format(q_qcolumn))
 
-    #Copy the results inot a data array and a time array
-    tarray = copy.deepcopy(qtable.getcol('TIME'))
-    qarray = copy.deepcopy(qtable.getcol(qcolumn))
+        #Copy the results inot a data array and a time array
+        q_tarray = copy.deepcopy(q_qtable.getcol('TIME'))
+        q_qarray = copy.deepcopy(q_qtable.getcol(q_qcolumn))
 
+        #Close the selection result table
+        q_qtable.close()
 
-    #Close the selection result table
-    qtable.close()
+        return q_qarray, q_tarray
 
+    #Calling it for the input parameters
+    qarray, tarray = query_table(q_ant1=ant1, q_ant2=ant2, q_qcolumn=qcolumn)
+
+    #Get the flags if needed
+    if apply_flag == True:
+        #Getting the flag from the table
+        m_qarray, _ = query_table(q_ant1=ant1, q_ant2=ant2, q_qcolumn='FLAG')
+        
+        #Applying the flag (NOTE that the axis are not WFdata ordered!)
+        qarray = np.ma.masked_array(qarray, m_qarray)
+    
     #No column including spectral info only TIME info...
     #TO DO: somehow check for this
     #print(MS.colnames())
@@ -257,27 +291,110 @@ def get_baseline_data(mspath, ant1, ant2, qcolumn):
 
     return qarray, tarray
 
+def get_baseline_flag_fraction_data(mspath, echo_counter=False, continue_one_baseline_error=False):
+    """A wrapper around `get_baseline_data()`. In particular, this routine generates
+    waterfall plots for the fraction of baselines flagged (0 = none, 1 = all)
 
-def loop_baselines(mspath):
-    """A wrapper around `get_baseline_data()`. It can be used to get some statisics
-    on the baseline axis.
+    This script does not take autocorrelations, but only baselines into account.
 
+    It depends on the inherent property of the MS being the same dimension for
+    all baselines (i.e. `get_baseline_data` returns the same-sized quarr and the
+    tarr are the same for any baseline). NOTE that the script does not check if the
+    time stams are the same but onyl for the array shapes
+
+    NOTE: this routine is not too fast...
 
     Parameters
     ==========
     mspath: str
         The input MS path or a ``casacore.tables.table.table`` object
 
+    echo_counter: bool, opt
+        If True a counter of baselines processed is printed to the stdout
+
+    continue_one_baseline_error: bool, opt
+        If True, the code terminates even if not all baselines are processed
+
     Returns
     =======
+    frac_qarr: <nump.Ndarray>
+        The waterfall data matrix containing the fraction of flagged baselines
 
-
-
-
+    frac_tarr: <numpy.Ndarray>
+        The time axis for `frac_qarr`
 
     """
-    pass
+    MS = wf.msutil.create_MS_object(mspath)
 
+    #Get the list of antennas and indices
+    #antname_list = get_antenna_name_list_from_MS(MS)
+
+    #Get the list of antenna indices (these are indices)
+    ant1_list = np.unique(MS.getcol('ANTENNA1'))
+    ant2_list = np.unique(MS.getcol('ANTENNA2'))
+
+    #Get unique antenna indices list
+    unique_ant_list = np.unique(np.concatenate([ant1_list, ant2_list]))
+
+    #Nuber of expected baselines => used only for loop counter
+    N_b = int((len(unique_ant_list) * (len(unique_ant_list) - 1)) / 2)
+
+    #Get initial data sizes
+    qarr, tarr = get_baseline_data(MS, ant1=ant1_list[0], ant2=ant1_list[1], qcolumn='FLAG')
+
+    if qarr.dtype != bool:
+        raise TypeError('Error when reading in boolean mask from MS!')
+
+    #Now create master qarr to average onto
+    frac_qarr = np.zeros(np.shape(qarr))
+    frac_tarr = copy.deepcopy(tarr)
+
+    #I use a brute-force check for all baselines regardless how they organised
+    #Thus I loop through all possible baseline configurations
+
+    N_b_count = 0
+    for i in range(0,len(unique_ant_list)):
+        for j in range(0,len(unique_ant_list)):
+            if i >= j:
+                #Basically ignore possible autocorrelations 
+                #Plus the already tried combinations
+                continue
+            else:
+                #Check if baseline is valid
+                if unique_ant_list[i] in ant1_list and unique_ant_list[j] in ant2_list:
+                    #print(i,j)
+                    qarr, tarr = get_baseline_data(MS,
+                                ant1=unique_ant_list[i],
+                                ant2=unique_ant_list[j],
+                                qcolumn='FLAG')
+
+                    #Check array sizes but not the individual time stamps
+                    if np.shape(frac_qarr) != np.shape(qarr) or np.shape(frac_tarr) !=  np.shape(tarr):
+                        raise ValueError('Retrieved baseline data shape mismatch!')
+
+                    #qarr should be bool, so I convert it to zeros and ones and
+                    #add it to the master array
+                    frac_qarr = np.add(frac_qarr,qarr.astype(int))
+
+                    N_b_count += 1
+
+                    wf.miscutil.echo_for_loop_counter(0,N_b,N_b_count, 'Baselines processed')
+
+                else:
+                    pass
+        
+        #if i == 1:
+        #    break    
+
+    #Check if all baselines found and processed
+    if not continue_one_baseline_error:
+        if N_b != N_b_count:
+            raise ValueError('Some baselines either missed by wfutil or missing from the MS!')
+
+    #Now normalise with the number of baselines
+    frac_qarr = np.divide(frac_qarr, N_b)
+
+    return frac_qarr, tarr
 
 #*******************************************************************************
 #=== MAIN ===
@@ -288,65 +405,152 @@ if __name__ == "__main__":
 
 
 #*******************************************************************************
-    #=== Quick and dirty testing ===
     working_dir = '/home/krozgonyi/Desktop/playground/'
 
-    phase_plots = True
+    #=== Set up what to test ===
+    simple_baseline_test = False
+    flag_fraction_waterfall_test = True
 
-    #=== First test MS (small one) ===
+    #=== Flag fraction waterfall test ===
+    if flag_fraction_waterfall_test:
 
-    mspath = working_dir + '1630519596-1934_638_d0_5-allflag.ms'
-    #mspath = working_dir + '1630519596-1934_638-allflag.ms'
+        print('Generating WF data...')
 
-    MS = wf.msutil.create_MS_object(mspath)
-    #print(type(MS))
+        #Mask treshold value (applied at the end)
+        treshold = 0.66
 
-    #ant_name_list = get_antenna_name_list_from_MS(MS)
-    #print(ant_name_list)
+        #=== First test MS (small one) ===
+        mspath = working_dir + '1630519596-1934_638_d0_5-allflag.ms'
+        #mspath = working_dir + '1630519596-1934_638-allflag.ms'
 
-    flag_matrix, time_array = get_baseline_data(MS, 0, 40,'DATA')
-    chan_array = get_chann_array_from_MS(MS)
+        print('Processing MS: {0:s}'.format(mspath))
 
-    wf.msutil.close_MS_object(MS)
+        MS = wf.msutil.create_MS_object(mspath)
 
-    pol_array = np.array(['XX', 'YY'])
+        flag_matrix, time_array = get_baseline_flag_fraction_data(MS, echo_counter=True)
 
-    #Create a WF object
-    WFd1 = wf.core.WFdata(data_array = flag_matrix,
-                    time_array = time_array,
-                    chan_array = chan_array,
-                    pol_array = pol_array)
+        #flag_matrix, time_array = get_baseline_data(MS, 0, 40,'DATA')
+        chan_array = get_chann_array_from_MS(MS)
 
-    #Quick&dirty plot
-    wf.visutil.quick_and_dirty_plot(WFd1, plot_phase=phase_plots)
+        wf.msutil.close_MS_object(MS)
 
-    #=== Second test MS (large one) ===
+        pol_array = np.array(['XX', 'YY'])
 
-    mspath = working_dir + '1630519596-1934_638-allflag.ms'
+        #Create a WF object
+        WFd1 = wf.core.WFdata(data_array = flag_matrix,
+                        time_array = time_array,
+                        chan_array = chan_array,
+                        pol_array = pol_array)
 
-    MS = wf.msutil.create_MS_object(mspath)
+        #Quick&dirty plot
+        wf.visutil.quick_and_dirty_plot(WFd1)
 
-    flag_matrix, time_array = get_baseline_data(MS, 0, 40,'DATA')
-    chan_array = get_chann_array_from_MS(MS)
 
-    wf.msutil.close_MS_object(MS)
+        #=== Second test MS (large one) ===
+        #mspath = working_dir + '1630519596-1934_638_d0_5-allflag.ms'
+        mspath = working_dir + '1630519596-1934_638-allflag.ms'
 
-    pol_array = np.array(['XX', 'YY'])
+        print('Processing MS: {0:s}'.format(mspath))
 
-    #Create a WF object
-    WFd2 = wf.core.WFdata(data_array = flag_matrix,
-                    time_array = time_array,
-                    chan_array = chan_array,
-                    pol_array = pol_array)
+        MS = wf.msutil.create_MS_object(mspath)
 
-    #Quick&dirty plot
-    wf.visutil.quick_and_dirty_plot(WFd2, plot_phase=phase_plots)
+        flag_matrix, time_array = get_baseline_flag_fraction_data(MS, echo_counter=True)
 
-    #=== Combine the two WFdata ====
+        #flag_matrix, time_array = get_baseline_data(MS, 0, 40,'DATA')
+        chan_array = get_chann_array_from_MS(MS)
 
-    WFd_to_merge_list = [WFd1, WFd2]
+        wf.msutil.close_MS_object(MS)
 
-    merged_WFd = wf.core.merge_WFdata(WFd_to_merge_list)
+        pol_array = np.array(['XX', 'YY'])
 
-    #Quick&dirty plot
-    wf.visutil.quick_and_dirty_plot(merged_WFd, plot_phase=phase_plots)
+        #Create a WF object
+        WFd2 = wf.core.WFdata(data_array = flag_matrix,
+                        time_array = time_array,
+                        chan_array = chan_array,
+                        pol_array = pol_array)
+
+        #Quick&dirty plot
+        wf.visutil.quick_and_dirty_plot(WFd2)
+
+        #=== Combine the two WFdata ====
+        print('Merging WF data...')        
+
+        WFd_to_merge_list = [WFd1, WFd2]
+
+        merged_WFd = wf.core.merge_WFdata(WFd_to_merge_list)
+
+        #Create and apply mask
+        mask = np.zeros(np.shape(merged_WFd.data_array), dtype=bool)
+
+        mask[merged_WFd.data_array > treshold] = True
+
+        merged_WFd.apply_mask(mask)
+
+        print('...done')
+
+        #Quick&dirty plot
+        wf.visutil.quick_and_dirty_plot(merged_WFd)
+
+
+    #=== Simple baseline test ===
+    if simple_baseline_test:
+
+        phase_plots = True
+        ant1 = 0
+        ant2 = 50
+
+        #=== First test MS (small one) ===
+        mspath = working_dir + '1630519596-1934_638_d0_5-allflag.ms'
+        #mspath = working_dir + '1630519596-1934_638-allflag.ms'
+
+        MS = wf.msutil.create_MS_object(mspath)
+        #print(type(MS))
+
+        #ant_name_list = get_antenna_name_list_from_MS(MS)
+        #print(ant_name_list)
+
+        flag_matrix, time_array = get_baseline_data(MS, ant1, ant2,'DATA', apply_flag=True)
+        chan_array = get_chann_array_from_MS(MS)
+
+        wf.msutil.close_MS_object(MS)
+
+        pol_array = np.array(['XX', 'YY'])
+
+        #Create a WF object
+        WFd1 = wf.core.WFdata(data_array = flag_matrix,
+                        time_array = time_array,
+                        chan_array = chan_array,
+                        pol_array = pol_array)
+
+        #Quick&dirty plot
+        #wf.visutil.quick_and_dirty_plot(WFd1, plot_phase=phase_plots)
+
+        #=== Second test MS (large one) ===
+
+        mspath = working_dir + '1630519596-1934_638-allflag.ms'
+
+        MS = wf.msutil.create_MS_object(mspath)
+
+        flag_matrix, time_array = get_baseline_data(MS, ant1, ant2,'DATA', apply_flag=True)
+        chan_array = get_chann_array_from_MS(MS)
+
+        wf.msutil.close_MS_object(MS)
+
+        pol_array = np.array(['XX', 'YY'])
+
+        #Create a WF object
+        WFd2 = wf.core.WFdata(data_array = flag_matrix,
+                        time_array = time_array,
+                        chan_array = chan_array,
+                        pol_array = pol_array)
+
+        #Quick&dirty plot
+        #wf.visutil.quick_and_dirty_plot(WFd2, plot_phase=phase_plots)
+
+        #=== Combine the two WFdata ====
+        WFd_to_merge_list = [WFd1, WFd2]
+
+        merged_WFd = wf.core.merge_WFdata(WFd_to_merge_list)
+
+        #Quick&dirty plot
+        wf.visutil.quick_and_dirty_plot(merged_WFd, plot_phase=phase_plots)

@@ -50,7 +50,7 @@ c3 = '#FDE724';#Yellow
 
 
 #*******************************************************************************
-#=== Functions I ===
+#=== Functions ===
 def quick_and_dirty_plot(WFD, plot_phase=False):
     """Quick&Dirty plot function for a `WFdata` object. It dumps the time-chan
     waterfall plot for the first polarisation
@@ -76,10 +76,18 @@ def quick_and_dirty_plot(WFD, plot_phase=False):
     fig, ax = plt.subplots(1, 1, figsize=(10,9.))
     
     if plot_phase:
-        img = ax.matshow(np.angle(WFD.data_array[0,...])) #Phase
+        data = np.angle(WFD.data_array[0,...])
+        #img = ax.matshow(np.angle(WFD.data_array[0,...])) #Phase
 
     else:
-        img = ax.matshow(np.absolute(WFD.data_array[0,...])) #Amp
+        data = np.absolute(WFD.data_array[0,...])
+        #img = ax.matshow(np.absolute(WFD.data_array[0,...])) #Amp
+
+    #Plot the data
+
+    #TO DO add an option to use the masked data as the min max color not only the visible values
+
+    img = ax.matshow(data, cmap='viridis', vmin=np.min(data), vmax=np.max(data))
 
     cb = plt.colorbar(img, aspect=30, fraction=0.04975, pad=0)
 

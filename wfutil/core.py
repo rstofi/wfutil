@@ -183,7 +183,8 @@ def map_data_arrays(merged_data_array,
         The `merged_data_array` that is appended with the data mapped.
     """
     #Check for masking
-    if not isinstance(merged_data_array, np.ma.MaskedArray):
+    if not ma.is_masked(merged_data_array) == False:
+    #if not isinstance(merged_data_array, np.ma.MaskedArray):
             masked = False
 
     else:
@@ -220,7 +221,8 @@ dimension sizes are different for the {0:d} element of the input list'.format(i)
 
         #Separate the mask and value matrices if the input is masked
         if masked:
-            if isinstance(data_arrays_to_merge_list[i], np.ma.MaskedArray):
+            if ma.is_masked(data_arrays_to_merge_list[i]):
+            #if isinstance(data_arrays_to_merge_list[i], np.ma.MaskedArray):
                 #Initialise the mapped mask to map the mask onto
                 mapped_mask = np.full((np.size(merged_time_array),
                                         np.size(merged_chan_array)),
@@ -235,7 +237,12 @@ dimension sizes are different for the {0:d} element of the input list'.format(i)
             else:
                 #TO DO: raise warning and fix exception
                 #raise ValueError('Input data array {0:d} is not masked!'.format(i))
-                raise Warning('Input data array {0:d} is not masked!'.format(i))
+                #raise Warning('Input data array {0:d} is not masked!'.format(i))
+
+                #Need to define this
+                mapped_mask = np.full((np.size(merged_time_array),
+                                        np.size(merged_chan_array)),
+                                        False, dtype=bool)
 
                 #Use an empty mask
                 data_array_mask = np.full((np.size(time_mapped_index_list[i]),
@@ -342,7 +349,28 @@ class WFdata(object):
                 pol_array,
                 time_array,
                 chan_array,
-                wf_desc = {'Masked' : 'False',
+                wf_desc = None):
+        #        wf_desc = {'Masked' : 'False',
+        #            'DataUnit' : 'amp',
+        #            'TimeUnit' : 's',
+        #            'ChanUnit' : 'Hz',
+        #            'PolUnit' : 'Cm^-2',
+        #            'DataFrame' : 'CGain',
+        #            'TimeFrame' : 'UNIX',
+        #            'ChanFrame' :'freq',
+        #            'PolFrame': 'XY'}):
+
+        #Set up instances
+        self.data_array = data_array
+        self.pol_array = pol_array
+        self.time_array = time_array
+        self.chan_array = chan_array
+
+        #So the wf_desc instance became non-mutable by using this syntax...
+        if wf_desc != None:
+                self.wf_desc = wf_desc
+        else:
+            self.wf_desc = {'Masked' : 'False',
                     'DataUnit' : 'amp',
                     'TimeUnit' : 's',
                     'ChanUnit' : 'Hz',
@@ -350,18 +378,10 @@ class WFdata(object):
                     'DataFrame' : 'CGain',
                     'TimeFrame' : 'UNIX',
                     'ChanFrame' :'freq',
-                    'PolFrame': 'XY'}):
-
-        #Set up instances
-        self.data_array = data_array
-        self.pol_array = pol_array
-        self.time_array = time_array
-        self.chan_array = chan_array
-        self.wf_desc = wf_desc
+                    'PolFrame': 'XY'}
 
         #Derived instances
         self.axes = [self.pol_array, self.time_array, self.chan_array]
-
 
         #=== Check the wf desc dictionary values
         for WF_DESC in _WF_DESC_COMPULSORY:
@@ -399,17 +419,15 @@ WF description (wf_descr)!'.format(WF_DESC))
             raise ValueError('Data array chan dimension and chan array dimension are not equal!')
 
         #=== Check for masks
-        
-        #NOTE: this part of the code is not tested
-
-        if isinstance(self.data_array, np.ma.MaskedArray):
+        #Update the wf_desc accordingly as it is used for checks
+        if ma.is_masked(self.data_array):
             self.wf_desc['Masked'] = 'True'
         else:
             self.wf_desc['Masked'] = 'False'
 
         #Convert possible masked axes to non-masked values
         for WFax in self.axes:
-            if isinstance(WFax, np.ma.MaskedArray):
+            if ma.is_masked(WFax):
                 WFax = ma.getdata(Wfax) #This converts the ma array to numpy array in theory
             else:
                 pass
@@ -590,7 +608,23 @@ def merge_WFdata(WFdata_to_merge_list):
     """The top level function to merge several `WFdata` object and create a merged
     object.
 
-    TO DO: add some more documentation to this docstring
+    The merged data will be masked, if ANY of the input data is masked.
+
+    The check is based on the `wf_desc` instance of the input `WFdata`'s
+
+    NOTE: this routine is not too fast...
+
+    TO DO: find if there is a bottleneck and patch the code to speed it up
+
+    Parameters:
+    ===========
+    WFdata_to_merge_list: list
+        A list containing `WFdata` objects to merge along both the chan and time axis
+
+    Returns:
+    ========
+    merged_WFdata: <WFdata>
+        The merged `WFdata` object
 
     """
 
@@ -627,27 +661,38 @@ with size {1:d} and pol frame of {2:s}!'.format(i, np.size(WFD.pol_array),
 
     #=== Create the empty merged data array and copy the description dictionary
 
-    #Copy the first `WFdata` desc dictionary
-    merged_wf_desc = copy.deepcopy(WFdata_to_merge_list[0].wf_desc)
-
-    #Check if the first `WFdata` data_array is masked or not
-    #The type is determined by numpy ma => see the documentation
+    #NOTE I am using the masked data as a reference if any of the input arrays are masked
 
     #TO DO: perform a data type check
+    masked_element = False
 
-    if WFdata_to_merge_list[0].wf_desc['Masked'] == 'True':
+    reference_data_index = 0
+    for i in range(0,len(WFdata_to_merge_list)):
+        if WFdata_to_merge_list[i].wf_desc['Masked'] == 'True':
+            masked_element  = True
+
+            reference_data_index = i
+
+            break
+
+    #Copy the first (or the first masked) `WFdata` desc dictionary
+    merged_wf_desc = copy.deepcopy(WFdata_to_merge_list[reference_data_index].wf_desc)
+
+    #if WFdata_to_merge_list[0].wf_desc['Masked'] == 'True':
+    if masked_element == True:
+
         merged_data_array = \
-        np.ma.array(np.zeros((np.size(merged_pol_array),
+        np.ma.array(np.empty((np.size(merged_pol_array),
                             np.size(merged_time_array),
                             np.size(merged_chan_array))),
-        mask=False, dtype=type(WFdata_to_merge_list[0].data_array[0,0,0]))
+        mask=False, dtype=type(WFdata_to_merge_list[reference_data_index].data_array.data[0,0,0]))
 
     else:
         merged_data_array = \
         np.zeros((np.size(merged_pol_array),
                 np.size(merged_time_array),
                 np.size(merged_chan_array)),
-        dtype=type(WFdata_to_merge_list[0].data_array[0,0,0]))
+        dtype=type(WFdata_to_merge_list[reference_data_index].data_array[0,0,0]))
 
     #=== Create an empty WFdata object
     merged_WFdata = WFdata(data_array = merged_data_array,
@@ -658,13 +703,12 @@ with size {1:d} and pol frame of {2:s}!'.format(i, np.size(WFD.pol_array),
 
     #=== Map each object onto the merged object
 
-
     #TO DO: put this into a distictive function and optimize it more...
 
     #Loop through the polarisation
     for pol_val in merged_WFdata.pol_array:
         #Get the pol data slice
-        
+
         merged_data_array_pol_slice = merged_WFdata.get_pol_slice(pol_val)
 
         #print(merged_data_array_pol_slice)
@@ -709,7 +753,7 @@ if __name__ == "__main__":
     test_map_data_arrays = False
     test_merge_WFdata = False
     test_add_wfdesc_item = False
-    test_apply_mask = True
+    test_apply_mask = False
 
     if test_apply_mask:
         d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
