@@ -5,7 +5,8 @@ space from MS.
 """
 
 __all__ = ['create_MS_object', 'close_MS_object', 'get_MS_subtable_path',
-             'get_chann_array_from_MS', 'get_antenna_name_list_from_MS']
+             'get_chann_array_from_MS', 'get_antenna_name_list_from_MS',
+             'get_antname_and_ID_dict_from_MS']
 
 import numpy as np
 import logging
@@ -153,9 +154,49 @@ def get_chann_array_from_MS(mspath):
 
     return chan_array
 
+def get_antname_and_ID_dict_from_MS(mspath):
+    """Generate the antenna name-ID pairs from an MS and return it as a dictionary.
+
+    This is a key function as antenna nameing and ID can be inconsistent between MS'
+
+    e.g. ant named m004 can have an ID of 2 (e.g. whan ant m000 and m002 are missing
+    from the MS)
+
+    Parameters
+    ==========
+    mspath: str
+        The input MS path or a ``casacore.tables.table.table`` object
+
+    Returns
+    =======
+    antname_ID_dict: dict
+        Dictionatry containing the antenna names and the corresponding antenna ID's
+
+    """
+    anttable_path = wf.msutil.get_MS_subtable_path(mspath,'ANTENNA')
+
+    #Open `ANTENNA` table and read the list of antennas
+    anttable = wf.msutil.create_MS_object(anttable_path)
+    #ant_name_list = copy.deepcopy(np.unique(anttable.getcol('NAME')))
+
+    #Set up the empty list
+    antname_ID_dict = {}
+
+    #The row number in the ANTENNA table corresponds to the antenna ID
+    #See: https://casaguides.nrao.edu/index.php?title=Measurement_Set_Contents
+
+    #Loop trough the rows in the ANTENNA table and build the dict
+    for i in anttable.rownumbers():
+        antname_ID_dict[anttable.getcol('NAME')[i]] = i
+
+    wf.msutil.close_MS_object(anttable)
+
+    return antname_ID_dict
+
 
 def get_antenna_name_list_from_MS(mspath):
-    """Return the list of antenna names from the given MS
+    """Return the list of antenna names from the given MS this is just a
+    convienience function
     
     Parameters
     ==========
@@ -168,14 +209,9 @@ def get_antenna_name_list_from_MS(mspath):
         List containing the antenna names
 
     """
-    anttable_path = wf.msutil.get_MS_subtable_path(mspath,'ANTENNA')
+    antname_ID_dict = get_antname_and_ID_dict_from_MS(mspath)
 
-    #Open `ANTENNA` table and read the list of antennas
-    anttable = wf.msutil.create_MS_object(anttable_path)
-    ant_name_list = copy.deepcopy(np.unique(anttable.getcol('NAME')))
-    wf.msutil.close_MS_object(anttable)
-
-    return ant_name_list
+    return list(antname_ID_dict.keys())
 
 
 def get_baseline_data(mspath, ant1, ant2, qcolumn, apply_flag=False):
@@ -291,7 +327,9 @@ def get_baseline_data(mspath, ant1, ant2, qcolumn, apply_flag=False):
 
     return qarray, tarray
 
-def get_baseline_flag_fraction_data(mspath, echo_counter=False, continue_one_baseline_error=False):
+def get_baseline_flag_fraction_data(mspath, sant=None, 
+                                    echo_counter=False,
+                                    continue_one_baseline_error=False):
     """A wrapper around `get_baseline_data()`. In particular, this routine generates
     waterfall plots for the fraction of baselines flagged (0 = none, 1 = all)
 
@@ -304,10 +342,18 @@ def get_baseline_flag_fraction_data(mspath, echo_counter=False, continue_one_bas
 
     NOTE: this routine is not too fast...
 
+    To derive the flag solutions for all baselines including a selected antenna,
+    specify the antenna name via the 'sant' variable. This is the way to generate
+    crosscorr flag tables that acan be applied to single-dish data!
+
     Parameters
     ==========
     mspath: str
         The input MS path or a ``casacore.tables.table.table`` object
+
+    sant: string, opt
+        If an antenna name is given only the flags from the baselines including
+        the selected antenna will be returned. 
 
     echo_counter: bool, opt
         If True a counter of baselines processed is printed to the stdout
@@ -327,20 +373,38 @@ def get_baseline_flag_fraction_data(mspath, echo_counter=False, continue_one_bas
     MS = wf.msutil.create_MS_object(mspath)
 
     #Get the list of antennas and indices
-    #antname_list = get_antenna_name_list_from_MS(MS)
-
-    #Get the list of antenna indices (these are indices)
-    ant1_list = np.unique(MS.getcol('ANTENNA1'))
-    ant2_list = np.unique(MS.getcol('ANTENNA2'))
+    antname_ID_dict = get_antname_and_ID_dict_from_MS(MS)
 
     #Get unique antenna indices list
-    unique_ant_list = np.unique(np.concatenate([ant1_list, ant2_list]))
+    unique_ant_name_list = list(antname_ID_dict.keys())
+    unique_ant_ID_list = np.sort(list(antname_ID_dict.values())) #Sort the IDs for covieneient processing
+
+    #If sant is given, chack if exist in the dict
+    if sant != None:
+        if sant not in unique_ant_name_list:
+            raise ValueError('Provided sant is not a valid antenna name!')
+
+        #Get sant ID
+        sant_ID = antname_ID_dict[sant]
+    else:
+        sant_ID = None
+
+    #Get the list of antenna ID's for ant1 and ant2 (can't get from the dict)
+    ant1_ID_list = np.unique(MS.getcol('ANTENNA1'))
+    ant2_ID_list = np.unique(MS.getcol('ANTENNA2'))
+
+    #Check if this is the same as the union of ant1 and ant2 lists
+    if np.all(unique_ant_ID_list) != np.all(np.unique([ant1_ID_list,ant2_ID_list])):
+        raise ValueError('Antenna name missmach in abselines and ANTENNA table!')
 
     #Nuber of expected baselines => used only for loop counter
-    N_b = int((len(unique_ant_list) * (len(unique_ant_list) - 1)) / 2)
+    if sant != None:
+        N_b = len(unique_ant_name_list) - 1
+    else:
+        N_b = int((len(unique_ant_name_list) * (len(unique_ant_name_list) - 1)) / 2)
 
-    #Get initial data sizes
-    qarr, tarr = get_baseline_data(MS, ant1=ant1_list[0], ant2=ant1_list[1], qcolumn='FLAG')
+    #Get initial data sizes (assuming that this baseline exist!)
+    qarr, tarr = get_baseline_data(MS, ant1=ant1_ID_list[0], ant2=ant1_ID_list[1], qcolumn='FLAG')
 
     if qarr.dtype != bool:
         raise TypeError('Error when reading in boolean mask from MS!')
@@ -353,19 +417,30 @@ def get_baseline_flag_fraction_data(mspath, echo_counter=False, continue_one_bas
     #Thus I loop through all possible baseline configurations
 
     N_b_count = 0
-    for i in range(0,len(unique_ant_list)):
-        for j in range(0,len(unique_ant_list)):
+    for i in unique_ant_ID_list:
+        for j in unique_ant_ID_list:
             if i >= j:
                 #Basically ignore possible autocorrelations 
                 #Plus the already tried combinations
                 continue
             else:
                 #Check if baseline is valid
-                if unique_ant_list[i] in ant1_list and unique_ant_list[j] in ant2_list:
+                if i in ant1_ID_list and j in ant2_ID_list:
+
+                    #If sant is given check if it is in the baseline being processed
+                    if sant != None:
+                        #If not go to next baseline
+                        if sant_ID not in [i,j]:
+                            continue
+                        else:
+                            pass
+                    else:
+                        pass
+
                     #print(i,j)
                     qarr, tarr = get_baseline_data(MS,
-                                ant1=unique_ant_list[i],
-                                ant2=unique_ant_list[j],
+                                ant1=i,
+                                ant2=j,
                                 qcolumn='FLAG')
 
                     #Check array sizes but not the individual time stamps
@@ -378,13 +453,11 @@ def get_baseline_flag_fraction_data(mspath, echo_counter=False, continue_one_bas
 
                     N_b_count += 1
 
-                    wf.miscutil.echo_for_loop_counter(0,N_b,N_b_count, 'Baselines processed')
+                    if echo_counter:
+                        wf.miscutil.echo_for_loop_counter(0,N_b,N_b_count, 'Baselines processed')
 
                 else:
-                    pass
-        
-        #if i == 1:
-        #    break    
+                    pass 
 
     #Check if all baselines found and processed
     if not continue_one_baseline_error:
@@ -401,7 +474,7 @@ def get_baseline_flag_fraction_data(mspath, echo_counter=False, continue_one_bas
 if __name__ == "__main__":
     #pass
 
-    #exit()
+    exit()
 
 
 #*******************************************************************************
@@ -409,9 +482,45 @@ if __name__ == "__main__":
 
     #=== Set up what to test ===
     simple_baseline_test = False
-    flag_fraction_waterfall_test = True
+    flag_fraction_waterfall_test = False
+    single_antenna_flag_fraction_waterfall_test = False
 
     #=== Flag fraction waterfall test ===
+    if single_antenna_flag_fraction_waterfall_test:
+
+        mspath = working_dir + '1630519596-1934_638_d0_5-allflag.ms'
+
+        ant_name_list = get_antenna_name_list_from_MS(mspath)
+
+        print('Processing MS: {0:s}'.format(mspath))
+
+        MS = wf.msutil.create_MS_object(mspath)
+
+        #Select antenna to process by ID
+        sant = ant_name_list[10]
+
+        print('Processing antenna {0:s}'.format(sant))
+
+        flag_matrix, time_array = get_baseline_flag_fraction_data(MS, 
+                                    sant=sant, echo_counter=True)
+
+        #flag_matrix, time_array = get_baseline_data(MS, 0, 40,'DATA')
+        chan_array = get_chann_array_from_MS(MS)
+
+        wf.msutil.close_MS_object(MS)
+
+        pol_array = np.array(['XX', 'YY'])
+
+        #Create a WF object
+        WFd1 = wf.core.WFdata(data_array = flag_matrix,
+                        time_array = time_array,
+                        chan_array = chan_array,
+                        pol_array = pol_array)
+
+        #Quick&dirty plot
+        wf.visutil.quick_and_dirty_plot(WFd1)
+
+
     if flag_fraction_waterfall_test:
 
         print('Generating WF data...')
@@ -505,9 +614,6 @@ if __name__ == "__main__":
 
         MS = wf.msutil.create_MS_object(mspath)
         #print(type(MS))
-
-        #ant_name_list = get_antenna_name_list_from_MS(MS)
-        #print(ant_name_list)
 
         flag_matrix, time_array = get_baseline_data(MS, ant1, ant2,'DATA', apply_flag=True)
         chan_array = get_chann_array_from_MS(MS)
