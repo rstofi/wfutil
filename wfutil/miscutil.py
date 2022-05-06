@@ -11,7 +11,7 @@ import wfutil as wf
 
 #*******************************************************************************
 #=== Functions ===
-def echo_for_loop_counter(start,end,count,loop_string):
+def echo_for_loop_counter(start,end,count,loop_string='Loop state'):
     """Simple routine to print the status of a for loop to the stdout and update
     it dynamically.
     

@@ -35,7 +35,7 @@ import wfutil as wf
 #=== Globals ===
 global _WF_DESC_COMPULSORY
 
-_WF_DESC_COMPULSORY = ['Masked', 'DataUnit', 'TimeUnit', 'ChanUnit', 'PolUnit',
+_WF_DESC_COMPULSORY = ['Name', 'Masked', 'DataUnit', 'TimeUnit', 'ChanUnit', 'PolUnit',
                         'DataFrame', 'TimeFrame', 'ChanFrame', 'PolFrame']
 
 global _SUPPORTED_DATA_FRAMES
@@ -326,7 +326,7 @@ class WFdata(object):
         add additional information to the WFdata object.
         It has to have the following keys (these should be self-explanatory):
 
-        ['Masked', DataUnit', 'TimeUnit', 'ChanUnit', 'PolUnit',
+        ['Name', 'Masked', DataUnit', 'TimeUnit', 'ChanUnit', 'PolUnit',
         'DataFrame', 'TimeFrame', 'ChanFrame', 'PolFrame']
 
         The walid key walues are only defined for the array frames as the units
@@ -370,7 +370,8 @@ class WFdata(object):
         if wf_desc != None:
                 self.wf_desc = wf_desc
         else:
-            self.wf_desc = {'Masked' : 'False',
+            self.wf_desc = {'Name' : 'WFd',
+                    'Masked' : 'False',
                     'DataUnit' : 'amp',
                     'TimeUnit' : 's',
                     'ChanUnit' : 'Hz',
@@ -445,6 +446,11 @@ WF description (wf_descr)!'.format(WF_DESC))
         """Add a key-value pair to the `wf_desc` instance dictionary
         """
         self.wf_desc[desc_key] = desc_val
+
+    def rename_wfd(self, new_name):
+        """Add a key-value pair to the `wf_desc` instance dictionary
+        """
+        self.wf_desc['Name'] = new_name
 
     def apply_mask(self,new_mask):
         """Apply a boolean mask to the `WFdata` using a mask of the same size as

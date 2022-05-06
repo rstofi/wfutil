@@ -6,7 +6,8 @@ space from MS.
 
 __all__ = ['create_MS_object', 'close_MS_object', 'get_MS_subtable_path',
              'get_chann_array_from_MS', 'get_antenna_name_list_from_MS',
-             'get_antname_and_ID_dict_from_MS']
+             'get_antname_and_ID_dict_from_MS',
+             'get_fieldname_and_ID_list_dict_from_MS']
 
 import numpy as np
 import logging
@@ -155,9 +156,9 @@ def get_chann_array_from_MS(mspath):
     return chan_array
 
 def get_antname_and_ID_dict_from_MS(mspath):
-    """Generate the antenna name-ID pairs from an MS and return it as a dictionary.
+    """Generate the antenna name -- ID pairs from an MS and return it as a dictionary.
 
-    This is a key function as antenna nameing and ID can be inconsistent between MS'
+    This is a key function as antenna naming and ID can be inconsistent between MS'
 
     e.g. ant named m004 can have an ID of 2 (e.g. whan ant m000 and m002 are missing
     from the MS)
@@ -214,7 +215,115 @@ def get_antenna_name_list_from_MS(mspath):
     return list(antname_ID_dict.keys())
 
 
-def get_baseline_data(mspath, ant1, ant2, qcolumn, apply_flag=False):
+def get_fieldname_and_ID_list_dict_from_MS(mspath,scan_ID=False):
+    """Generate the field name -- ID list pairs or with `scan_ID` set to True,
+    the scan IDs returned instead of the field IDs, from an MS as a dictionary.
+
+    This is a key function as each field/scan could be queued by it's ID
+
+    Thius is a core function in inspecting MS for field selection
+
+    NOTE: a field can have different ID's attached i.e. the OTZFDUMMY field in
+            the CNSS data set. The same applies to scans obviously
+
+    NOTE: I am not 100% if this is how the MS works in terms of field ID's, but
+            based on tests, seems legit
+
+    Parameters
+    ==========
+    mspath: str
+        The input MS path or a ``casacore.tables.table.table`` object
+
+    Returns
+    =======
+    fieldname_ID_dict: dict
+        Dictionatry containing the field names and the corresponding field ID's
+
+    """
+    fieldtable_path = wf.msutil.get_MS_subtable_path(mspath,'FIELD')
+
+    #Open `FIELD` table and read the list of antennas
+    fieldtable = wf.msutil.create_MS_object(fieldtable_path)
+
+    #Set up the empty list
+    fieldname_ID_dict = {}
+
+    #The row number in the ANTENNA table corresponds to the field ID
+    #See: https://casaguides.nrao.edu/index.php?title=Measurement_Set_Contents
+
+    #I *assume* the same thing is true for the FIELD ID
+
+    #Loop trough the rows in the ANTENNA table and build the dict
+    for i in fieldtable.rownumbers():
+        
+        field_name = fieldtable.getcol('NAME')[i]
+        
+        if field_name not in list(fieldname_ID_dict.keys()):
+            fieldname_ID_dict[field_name] = [i]
+        else:
+            fieldname_ID_dict[field_name].append(i)
+            
+
+    wf.msutil.close_MS_object(fieldtable)
+
+    #The fieldname ID dict has to be creted to generate the scanname_ID_disct:
+    if scan_ID:
+
+        #NOTE this is a really slow sub-routine!
+
+        MS = wf.msutil.create_MS_object(mspath)
+
+        scanname_ID_disct = {}
+
+        fieldnames = list(fieldname_ID_dict.keys())
+
+        for field_name in fieldnames:
+
+            field_selection_string = '['
+            for field_ID in fieldname_ID_dict[field_name]:
+                field_selection_string += '{0:d},'.format(field_ID)
+
+            #Add ending bracket
+            field_selection_string = field_selection_string[:-1]
+            field_selection_string += ']'
+
+
+            scan_qtable = MS.query(query='FIELD_ID IN {0:s}'.format(
+                        field_selection_string),
+                        columns='SCAN_NUMBER')
+
+            scanname_ID_disct[field_name] = list(np.unique(scan_qtable.getcol('SCAN_NUMBER')))
+
+        wf.msutil.close_MS_object(MS)
+    
+       return scanname_ID_disct
+
+    else:
+        return fieldname_ID_dict
+
+def get_field_name_list_from_MS(mspath):
+    """Return the list of field names from the given MS this is just a
+    convienience function
+    
+    Parameters
+    ==========
+    mspath: str
+        The input MS path or a ``casacore.tables.table.table`` object
+
+    Returns
+    =======
+    field_name_list: list of strings
+        List containing the antenna names
+
+    """
+    fieldname_ID_dict = get_fieldname_and_ID_dict_from_MS(mspath)
+
+    return list(fieldname_ID_dict.keys())
+
+def get_baseline_data(mspath, ant1, ant2, qcolumn,
+                    apply_flag=False,
+                    field_ID_list=None,
+                    scan_ID_list=None):
     """Core function for retrieveing time-frequency data from an MS. 
 
     The code uses a TAQL query to create a subtable selecting the given columns
@@ -225,6 +334,17 @@ def get_baseline_data(mspath, ant1, ant2, qcolumn, apply_flag=False):
 
     The baseline is defined by the antenna IDs that can be computed from the names
     using higher-level functions.
+
+    A subset of scans/fields can be selected, however if one wants to select e.g.
+    all fields from a scan and onla a single field from another scan, they must 
+    provide both scan IDs and ALL field IDs, including from the one scan all fields
+    are selected.
+
+    That is, the scan/field selection is really flexible but has to be specified
+    with great precision!
+
+    NOTE: it is faster and better practice to select based solely on field ID,
+        the option to select based on  scan ID is for testing purposes mostly...
 
     Parameters
     ==========
@@ -249,7 +369,13 @@ def get_baseline_data(mspath, ant1, ant2, qcolumn, apply_flag=False):
         NOTE currently only works with `qcolumn` == 'DATA'
 
         if `qcolumn` == 'FLAG' this option is automatically disabled
-        
+    
+    field_ID_list: list of int, optional
+        A list of field IDs to select. If None, all fields are selected.
+
+    scan_ID_list: list of int, optional
+        A list of scan IDs to select. If None, all scans are selected.
+
     Returns
     =======
     wf_data: <numpy.Ndarray>
@@ -267,17 +393,64 @@ def get_baseline_data(mspath, ant1, ant2, qcolumn, apply_flag=False):
     if qcolumn == 'FLAG' and apply_flag == True:
         apply_flag = False
 
+    #The MS has the lower index antenna as ant1 (always I think), so swap the antennas,
+    #if ant1 have larger index than ant2!
+    if ant1 > ant2:
+        antx = ant1
+        ant1 = ant2
+        ant2 = antx
+        del antx
+
     MS = wf.msutil.create_MS_object(mspath)
 
     #Query the data
-    def query_table(q_ant1, q_ant2, q_qcolumn):
+    def query_table(q_ant1, q_ant2, q_qcolumn, scan_ID_list):
         """I am not sure if this is a good coding practice, but I want to code the
         table query only once and not duplicate it...
         
         Also I am using sligtly different variable names useful for debugging...
         """
-        q_qtable = MS.query(query='ANTENNA1 == {0:d} AND ANTENNA2 == {1:d}'.format(
+        if scan_ID_list == None and field_ID_list == None:
+            q_qtable = MS.query(query='ANTENNA1 == {0:d} AND ANTENNA2 == {1:d}'.format(
                          q_ant1,q_ant2), columns='{0:s},TIME'.format(q_qcolumn))
+
+        else:
+            #Get selection strings
+            if field_ID_list != None:
+                field_selection_string = ' AND FIELD_ID IN ['
+
+                for field_ID in field_ID_list:
+                    field_selection_string += '{0:d},'.format(field_ID)
+
+                #Add ending bracket
+                field_selection_string = field_selection_string[:-1]
+                field_selection_string += ']'
+
+            if scan_ID_list != None:
+                scan_selection_string = ' AND SCAN_NUMBER IN ['
+
+                for scan_ID in scan_ID_list:
+                    scan_selection_string += '{0:d},'.format(scan_ID)
+
+                #Add ending bracket
+                scan_selection_string = scan_selection_string[:-1]
+                scan_selection_string += ']'
+
+            #Actually query the data
+            if scan_ID_list != None and field_ID_list == None:
+                q_qtable = MS.query(query='ANTENNA1 == {0:d} AND ANTENNA2 == {1:d}{2:s}'.format(
+                                    q_ant1,q_ant2,scan_selection_string),
+                            columns='{0:s},TIME'.format(q_qcolumn))
+
+            elif scan_ID_list == None and field_ID_list != None:
+                q_qtable = MS.query(query='ANTENNA1 == {0:d} AND ANTENNA2 == {1:d}{2:s}'.format(
+                                    q_ant1,q_ant2,field_selection_string),
+                            columns='{0:s},TIME'.format(q_qcolumn))
+
+            else:
+                q_qtable = MS.query(query='ANTENNA1 == {0:d} AND ANTENNA2 == {1:d}{2:s}{3:s}'.format(
+                                    q_ant1,q_ant2,field_selection_string,scan_selection_string),
+                            columns='{0:s},TIME'.format(q_qcolumn))
 
         #Copy the results inot a data array and a time array
         q_tarray = copy.deepcopy(q_qtable.getcol('TIME'))
@@ -289,12 +462,18 @@ def get_baseline_data(mspath, ant1, ant2, qcolumn, apply_flag=False):
         return q_qarray, q_tarray
 
     #Calling it for the input parameters
-    qarray, tarray = query_table(q_ant1=ant1, q_ant2=ant2, q_qcolumn=qcolumn)
+    qarray, tarray = query_table(q_ant1=ant1, q_ant2=ant2,
+                                q_qcolumn=qcolumn,
+                                field_ID_list=field_ID_list,
+                                scan_ID_list=scan_ID_list)
 
     #Get the flags if needed
     if apply_flag == True:
         #Getting the flag from the table
-        m_qarray, _ = query_table(q_ant1=ant1, q_ant2=ant2, q_qcolumn='FLAG')
+        m_qarray, _ = query_table(q_ant1=ant1, q_ant2=ant2,
+                                q_qcolumn='FLAG',
+                                field_ID_list=field_ID_list,
+                                scan_ID_list=scan_ID_list)
         
         #Applying the flag (NOTE that the axis are not WFdata ordered!)
         qarray = np.ma.masked_array(qarray, m_qarray)
@@ -476,7 +655,6 @@ if __name__ == "__main__":
 
     exit()
 
-
 #*******************************************************************************
     working_dir = '/home/krozgonyi/Desktop/playground/'
 
@@ -484,6 +662,7 @@ if __name__ == "__main__":
     simple_baseline_test = False
     flag_fraction_waterfall_test = False
     single_antenna_flag_fraction_waterfall_test = False
+    query_field_test = False
 
     #=== Flag fraction waterfall test ===
     if single_antenna_flag_fraction_waterfall_test:
@@ -660,3 +839,48 @@ if __name__ == "__main__":
 
         #Quick&dirty plot
         wf.visutil.quick_and_dirty_plot(merged_WFd, plot_phase=phase_plots)
+
+    #=== Select field in WFdata test ===
+    if query_field_test:
+
+        working_dir = '/home/krozgonyi/CNSS_and_VLASS_resources/test_data/'
+        input_MS = 'TSKY0001.sb34339757.eb34342285.58002.94765369213.ms'
+
+        mspath = working_dir + input_MS
+
+        #=== Generate the WFd object
+        MS = wf.msutil.create_MS_object(mspath)
+
+        #Select antennas
+        antname_dict = wf.msutil.get_antname_and_ID_dict_from_MS(MS)
+
+        #exit()
+
+        for ant_name in antname_dict:
+            vis_matrix, time_array = wf.msutil.get_baseline_data(MS,
+                                        ant1=antname_dict[ant_name],
+                                        ant2=antname_dict['ea27'],
+                                        qcolumn='DATA',
+                                        apply_flag=False,
+                                        scan_ID_list=[8,11],
+                                        field_ID_list=[6,7,28])
+
+            chan_array = wf.msutil.get_chann_array_from_MS(MS)
+
+            wf.msutil.close_MS_object(MS)
+
+            pol_array = np.array(['XX', 'XY', 'YX', 'YY'])
+
+            #Create a WF object
+            WFd = wf.core.WFdata(data_array = vis_matrix,
+                            time_array = time_array,
+                            chan_array = chan_array,
+                            pol_array = pol_array)
+
+            #Plot the waterfall plots
+            #wf.visutil.quick_and_dirty_plot(WFd, plot_phase=False)
+            wf.visutil.quick_and_dirty_plot(WFd, plot_phase=True)
+
+
+
+
