@@ -279,14 +279,7 @@ def get_fieldname_and_ID_list_dict_from_MS(mspath,scan_ID=False):
 
         for field_name in fieldnames:
 
-            field_selection_string = '['
-            for field_ID in fieldname_ID_dict[field_name]:
-                field_selection_string += '{0:d},'.format(field_ID)
-
-            #Add ending bracket
-            field_selection_string = field_selection_string[:-1]
-            field_selection_string += ']'
-
+            field_selection_string = wf.miscutil.convert_list_to_string(list(fieldname_ID_dict[field_name]))
 
             scan_qtable = MS.query(query='FIELD_ID IN {0:s}'.format(
                         field_selection_string),
@@ -296,7 +289,7 @@ def get_fieldname_and_ID_list_dict_from_MS(mspath,scan_ID=False):
 
         wf.msutil.close_MS_object(MS)
     
-       return scanname_ID_disct
+        return scanname_ID_disct
 
     else:
         return fieldname_ID_dict
@@ -404,7 +397,7 @@ def get_baseline_data(mspath, ant1, ant2, qcolumn,
     MS = wf.msutil.create_MS_object(mspath)
 
     #Query the data
-    def query_table(q_ant1, q_ant2, q_qcolumn, scan_ID_list):
+    def query_table(q_ant1, q_ant2, q_qcolumn, scan_ID_list,field_ID_list):
         """I am not sure if this is a good coding practice, but I want to code the
         table query only once and not duplicate it...
         
@@ -417,24 +410,14 @@ def get_baseline_data(mspath, ant1, ant2, qcolumn,
         else:
             #Get selection strings
             if field_ID_list != None:
-                field_selection_string = ' AND FIELD_ID IN ['
 
-                for field_ID in field_ID_list:
-                    field_selection_string += '{0:d},'.format(field_ID)
-
-                #Add ending bracket
-                field_selection_string = field_selection_string[:-1]
-                field_selection_string += ']'
+                field_selection_string = ' AND FIELD_ID IN '
+                field_selection_string += wf.miscutil.convert_list_to_string(field_ID_list)
 
             if scan_ID_list != None:
-                scan_selection_string = ' AND SCAN_NUMBER IN ['
 
-                for scan_ID in scan_ID_list:
-                    scan_selection_string += '{0:d},'.format(scan_ID)
-
-                #Add ending bracket
-                scan_selection_string = scan_selection_string[:-1]
-                scan_selection_string += ']'
+                scan_selection_string = ' AND SCAN_NUMBER IN '
+                scan_selection_string += wf.miscutil.convert_list_to_string(scan_ID_list)
 
             #Actually query the data
             if scan_ID_list != None and field_ID_list == None:
