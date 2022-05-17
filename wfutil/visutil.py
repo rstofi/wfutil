@@ -5,7 +5,7 @@ Mostly waterfall plots
 """
 
 __all__ = ['quick_and_dirty_plot', 'simple_plot_WFD_slice',
-            'plot_flag_fraction_for_sant']
+            'simple_plot_WFD_slice_list','plot_flag_fraction_for_sant']
 
 import os
 import copy
@@ -199,6 +199,8 @@ def simple_plot_WFD_slice(WFD,
     `time_val`, `chan_val` see the `get_axis_array_from_string()` function from
     `wfutil.core`
 
+    NOTE that the pol, time and chan values should be indices or physical values!
+
     Parameters:
     ===========
     physical_xax: bool, optional
@@ -209,21 +211,19 @@ def simple_plot_WFD_slice(WFD,
     ========
     Create a plot to show
     """
-    #Check if slice is valid
-
-    fig, ax = plt.subplots(1, 1, figsize=(9,6.))
-
-    if ptitle != None:
-        fig.suptitle('{0:s}'.format(ptitle), fontsize = 18)
-
     #Get the complex visibility data
     data_slice = WFD.get_axis_slice(axis=axis,
                         use_index=use_index,
+                        pol_val=pol_val,
                         time_val=time_val,
-                        chan_val=chan_val,
-                        pol_val=pol_val)
+                        chan_val=chan_val)
 
     ax_val = WFD.get_axis_array_from_string(axis)
+
+    fig, ax = plt.subplots(1, 1, figsize=(9,5.))
+
+    if ptitle != None:
+        fig.suptitle('{0:s}'.format(ptitle), fontsize = 18)
 
     if plot_phase:
         data_slice = np.angle(data_slice)
@@ -234,15 +234,150 @@ def simple_plot_WFD_slice(WFD,
         plt.ylabel(r'Visibility amplitude', fontsize = 18)
 
     if physical_xax:
-        plt.step(ax_val, data_slice,lw=2.5,c=c1)
+        plt.step(ax_val, data_slice,lw=3,c=c1)
     else:
-        plt.step(range(0,len(data_slice)), data_slice,lw=2.5,c=c1)
+        plt.step(range(0,len(data_slice)), data_slice,lw=3,c=c1)
 
     plt.xlabel(axis, fontsize = 18)
     
     if save_fig:
         plt.savefig(fname, bbox_inches='tight')
     else:
+        plt.show()
+
+    plt.close()
+
+def simple_plot_WFD_slice_list(WFD,
+                axis='Time',
+                loop_axis='Chan',
+                use_index=True,
+                pol_val=[0],
+                time_val=[0],
+                chan_val=[0],
+                plot_phase=False,
+                physical_xax=False,
+                save_fig=False,
+                fname='./test_WFD_slice.png',
+                ptitle=None):
+    """Quick&Dirty plot function for plotting multiple 1D slices from the WFDdata
+    
+    The indices should be given as list with two of them are with size of 1 or the
+    element will be used for slicing
+
+    The loop axis is the axis with multiple input values, and the rest should have
+    only one element.
+
+    NOTE that the pol, time and chan values hast to be LISTS indices or physical values!
+
+    Parameters:
+    ===========
+    loop_axis: str, optional
+        The axis with multiple input values
+
+    Returns:
+    ========
+    Create a plot to show
+    """
+    #Some checks
+    if loop_axis not in wf.core._SUPPORTED_WFD_SLICES:
+        raise ValueError('Not supported axis: {0:s}!'.format(loop_axis))
+        #NOTE that the axis value valisity is checked during slicing!
+
+    if np.all(np.array([type(pol_val),type(time_val),type(chan_val)])) != list:
+        raise TypeError('Axis values are not provided as lists!')
+
+    #Generate the data array list
+    data_array_list = []
+
+    if loop_axis == 'Pol':
+        label_list = pol_val
+    elif loop_axis == 'Time':
+        label_list = time_val
+    elif loop_axis == 'Chan':
+        label_list = chan_val
+
+    #It seems that manually looping trough thje possibilities is the best
+    if axis == 'Pol':
+        if loop_axis == 'Time':
+            for i in time_val:
+                data_array_list.append(WFD.get_axis_slice(axis=axis,
+                                        use_index=use_index,
+                                        pol_val=pol_val[0],
+                                        time_val=i,
+                                        chan_val=chan_val[0]))
+        else:
+            for i in chan_val:
+                data_array_list.append(WFD.get_axis_slice(axis=axis,
+                                        use_index=use_index,
+                                        pol_val=pol_val[0],
+                                        time_val=time_val[0],
+                                        chan_val=i))
+
+    elif axis == 'Time':
+        if loop_axis == 'Chan':
+            for i in chan_val:
+                data_array_list.append(WFD.get_axis_slice(axis=axis,
+                                        use_index=use_index,
+                                        pol_val=pol_val[0],
+                                        time_val=time_val[0],
+                                        chan_val=i))
+        else:
+            for i in pol_val: 
+                data_array_list.append(WFD.get_axis_slice(axis=axis,
+                                        use_index=use_index,
+                                        pol_val=i,
+                                        time_val=time_val[0],
+                                        chan_val=chan_val[0]))
+    elif axis == 'Chan':
+        if loop_axis == 'Pol':
+            for i in pol_val: 
+                data_array_list.append(WFD.get_axis_slice(axis=axis,
+                                        use_index=use_index,
+                                        pol_val=i,
+                                        time_val=time_val[0],
+                                        chan_val=chan_val[0]))
+        else:
+            for i in time_val:
+                data_array_list.append(WFD.get_axis_slice(axis=axis,
+                                        use_index=use_index,
+                                        pol_val=pol_val[0],
+                                        time_val=i,
+                                        chan_val=chan_val[0]))
+
+    ax_val = WFD.get_axis_array_from_string(axis)
+
+    #== Create figure ===
+    fig, ax = plt.subplots(1, 1, figsize=(10,6.))
+
+    if ptitle != None:
+        fig.suptitle('{0:s}'.format(ptitle), fontsize = 18)
+
+    if plot_phase:
+        data_array_list = np.angle(data_array_list)
+        plt.ylabel(r'Visibility phase', fontsize = 18)
+
+    else:
+        data_array_list = np.absolute(data_array_list)
+        plt.ylabel(r'Visibility amplitude', fontsize = 18)
+
+    if physical_xax:
+        for i in range(0,len(data_array_list)):
+            plt.step(ax_val, data_array_list[i],lw=3,
+                    alpha=0.85, label=str(label_list[i]))
+    else:
+        for i in range(0,len(data_array_list)):
+            plt.step(range(0,len(data_array_list[i])), data_array_list[i],lw=3,
+                    alpha=0.85, label=str(label_list[i]))
+
+    plt.xlabel(axis, fontsize = 18)
+    
+    #Add labels
+    plt.legend(bbox_to_anchor=(1,1), loc="upper left", fontsize=16)
+
+    if save_fig:
+        plt.savefig(fname, bbox_inches='tight')
+    else:
+        plt.tight_layout()
         plt.show()
 
     plt.close()
