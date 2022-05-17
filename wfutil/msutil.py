@@ -6,7 +6,7 @@ space from MS.
 
 __all__ = ['create_MS_object', 'close_MS_object', 'get_MS_subtable_path',
              'get_chann_array_from_MS', 'get_antenna_name_list_from_MS',
-             'get_antname_and_ID_dict_from_MS',
+             'get_antname_and_ID_dict_from_MS', 'get_pol_array_from_MS',
              'get_fieldname_and_ID_list_dict_from_MS']
 
 import numpy as np
@@ -24,6 +24,29 @@ global _SUPPORTED_MS_COLUMNS
 
 _ACK = False
 _SUPPORTED_MS_COLUMNS =  ['DATA', 'FLAG']
+
+
+#Define the indices for the correlator types in MSv2.
+#
+#See e.g.: https://github.com/SKA-ScienceDataProcessor/algorithm-reference-library/
+#blob/1b2c8d6079249202864abf8c60cdea40f0f123cb/processing_components/visibility/base.py#L644
+#
+# 1-4: Stokes polarization frame
+# 5-8: Circular polarization frame
+# 9-12: Linear polarization frame
+#
+_MSV2_CORR_TYPE_DICT = {1:'I',
+                        2:'Q',
+                        3:'U',
+                        4:'V',
+                        5:'RR',
+                        6:'RL',
+                        7:'LR',
+                        8:'LL',
+                        9:'XX',
+                        10:'XY',
+                        11:'YX',
+                        12:'YY'}
 
 #*******************************************************************************
 #=== Functions ===
@@ -114,7 +137,7 @@ def get_MS_subtable_path(mspath, subtable_name):
 
     #Select all substrings containing `subtable_name` and select the first result
     #NOTE: only one table sould exist named `/subtable_name`
-    subtable_path = [anttables_path for anttables_path in MS.getsubtables() if '/' + subtable_name in anttables_path][0]
+    subtable_path = [subtables_path for subtables_path in MS.getsubtables() if '/' + subtable_name in subtables_path][0]
 
     #Get the index of the dash using reverse
     subtable_dash_index = subtable_path.rindex("/")
@@ -123,7 +146,6 @@ def get_MS_subtable_path(mspath, subtable_name):
                     "::" + subtable_path[subtable_dash_index+1:]
 
     return subtable_path
-
 
 def get_chann_array_from_MS(mspath):
     """The MS is structured such a way, that the channel information is the same
@@ -154,6 +176,48 @@ def get_chann_array_from_MS(mspath):
     wf.msutil.close_MS_object(chan_table)
 
     return chan_array
+
+def get_pol_array_from_MS(mspath):
+    """he MS is structured such a way, that the polarisation information is the
+    same for all time chunks (this is an assumption), and so we need to get it
+    independently from the time sub-selection of the data.
+
+    This subroutine gets the polarisation array from the MS.
+
+    TO DO: get the pol frame and units as well
+
+    Parameters
+    ==========
+    mspath: str
+        The input MS path or a ``casacore.tables.table.table`` object
+
+    Returns
+    =======
+    pol_array: <numpy.Ndarray>
+        Numpy array containing the polarisation values as strings
+
+    """
+    pol_table_path = wf.msutil.get_MS_subtable_path(mspath,'POLARIZATION')
+
+    pol_table = wf.msutil.create_MS_object(pol_table_path)
+
+    #Use the correlator type dictionary based on MSv2
+
+    #NOTE if multiple fields with different correlator products are used the code only looks at the first row!
+    corr_type = pol_table.getcol('CORR_TYPE')[0]
+    N_pol = pol_table.getcol('NUM_CORR')[0]
+
+    if np.size(corr_type) != N_pol:
+        raise ValueError('Inconsistent number of polariastions and defined correlator types!')
+
+    #Generate the human readable polarisation string from the IDs and dictionary
+    pol_array = []
+    for p in range(0,N_pol):
+        pol_array.append(_MSV2_CORR_TYPE_DICT[corr_type[p]])
+
+    wf.msutil.close_MS_object(pol_table)
+
+    return np.array(pol_array)
 
 def get_antname_and_ID_dict_from_MS(mspath):
     """Generate the antenna name -- ID pairs from an MS and return it as a dictionary.
@@ -465,15 +529,16 @@ def get_baseline_data(mspath, ant1, ant2, qcolumn,
     #TO DO: somehow check for this
     #print(MS.colnames())
 
-    #c_shape = ???
+    #NOTE this is only a problem if the time and channel shape is the same...
 
-    #NOTE the current code only works for two+ ploarisations!
-    #TO DO: check for exact polarisation info
+    #chan_array = wf.msutil.get_chan_array_from_MS(mspath)
+    #c_shape = np.size(chan_array)
 
-    p_shape = np.amin(np.shape(qarray))
+    #Check the polarisation array
+    pol_array = wf.msutil.get_pol_array_from_MS(mspath)
+    p_shape = np.size(pol_array)
 
     #TIME array can be exactly extracted from the data
-
     t_shape = np.size(tarray)
 
     #Reshape data until it is in the correct wfutil shape:
@@ -634,236 +699,4 @@ def get_baseline_flag_fraction_data(mspath, sant=None,
 #*******************************************************************************
 #=== MAIN ===
 if __name__ == "__main__":
-    #pass
-
-    exit()
-
-#*******************************************************************************
-    working_dir = '/home/krozgonyi/Desktop/playground/'
-
-    #=== Set up what to test ===
-    simple_baseline_test = False
-    flag_fraction_waterfall_test = False
-    single_antenna_flag_fraction_waterfall_test = False
-    query_field_test = False
-
-    #=== Flag fraction waterfall test ===
-    if single_antenna_flag_fraction_waterfall_test:
-
-        mspath = working_dir + '1630519596-1934_638_d0_5-allflag.ms'
-
-        ant_name_list = get_antenna_name_list_from_MS(mspath)
-
-        print('Processing MS: {0:s}'.format(mspath))
-
-        MS = wf.msutil.create_MS_object(mspath)
-
-        #Select antenna to process by ID
-        sant = ant_name_list[10]
-
-        print('Processing antenna {0:s}'.format(sant))
-
-        flag_matrix, time_array = get_baseline_flag_fraction_data(MS, 
-                                    sant=sant, echo_counter=True)
-
-        #flag_matrix, time_array = get_baseline_data(MS, 0, 40,'DATA')
-        chan_array = get_chann_array_from_MS(MS)
-
-        wf.msutil.close_MS_object(MS)
-
-        pol_array = np.array(['XX', 'YY'])
-
-        #Create a WF object
-        WFd1 = wf.core.WFdata(data_array = flag_matrix,
-                        time_array = time_array,
-                        chan_array = chan_array,
-                        pol_array = pol_array)
-
-        #Quick&dirty plot
-        wf.visutil.quick_and_dirty_plot(WFd1)
-
-
-    if flag_fraction_waterfall_test:
-
-        print('Generating WF data...')
-
-        #Mask treshold value (applied at the end)
-        treshold = 0.66
-
-        #=== First test MS (small one) ===
-        mspath = working_dir + '1630519596-1934_638_d0_5-allflag.ms'
-        #mspath = working_dir + '1630519596-1934_638-allflag.ms'
-
-        print('Processing MS: {0:s}'.format(mspath))
-
-        MS = wf.msutil.create_MS_object(mspath)
-
-        flag_matrix, time_array = get_baseline_flag_fraction_data(MS, echo_counter=True)
-
-        #flag_matrix, time_array = get_baseline_data(MS, 0, 40,'DATA')
-        chan_array = get_chann_array_from_MS(MS)
-
-        wf.msutil.close_MS_object(MS)
-
-        pol_array = np.array(['XX', 'YY'])
-
-        #Create a WF object
-        WFd1 = wf.core.WFdata(data_array = flag_matrix,
-                        time_array = time_array,
-                        chan_array = chan_array,
-                        pol_array = pol_array)
-
-        #Quick&dirty plot
-        wf.visutil.quick_and_dirty_plot(WFd1)
-
-
-        #=== Second test MS (large one) ===
-        #mspath = working_dir + '1630519596-1934_638_d0_5-allflag.ms'
-        mspath = working_dir + '1630519596-1934_638-allflag.ms'
-
-        print('Processing MS: {0:s}'.format(mspath))
-
-        MS = wf.msutil.create_MS_object(mspath)
-
-        flag_matrix, time_array = get_baseline_flag_fraction_data(MS, echo_counter=True)
-
-        #flag_matrix, time_array = get_baseline_data(MS, 0, 40,'DATA')
-        chan_array = get_chann_array_from_MS(MS)
-
-        wf.msutil.close_MS_object(MS)
-
-        pol_array = np.array(['XX', 'YY'])
-
-        #Create a WF object
-        WFd2 = wf.core.WFdata(data_array = flag_matrix,
-                        time_array = time_array,
-                        chan_array = chan_array,
-                        pol_array = pol_array)
-
-        #Quick&dirty plot
-        wf.visutil.quick_and_dirty_plot(WFd2)
-
-        #=== Combine the two WFdata ====
-        print('Merging WF data...')        
-
-        WFd_to_merge_list = [WFd1, WFd2]
-
-        merged_WFd = wf.core.merge_WFdata(WFd_to_merge_list)
-
-        #Create and apply mask
-        mask = np.zeros(np.shape(merged_WFd.data_array), dtype=bool)
-
-        mask[merged_WFd.data_array > treshold] = True
-
-        merged_WFd.apply_mask(mask)
-
-        print('...done')
-
-        #Quick&dirty plot
-        wf.visutil.quick_and_dirty_plot(merged_WFd)
-
-
-    #=== Simple baseline test ===
-    if simple_baseline_test:
-
-        phase_plots = True
-        ant1 = 0
-        ant2 = 50
-
-        #=== First test MS (small one) ===
-        mspath = working_dir + '1630519596-1934_638_d0_5-allflag.ms'
-        #mspath = working_dir + '1630519596-1934_638-allflag.ms'
-
-        MS = wf.msutil.create_MS_object(mspath)
-        #print(type(MS))
-
-        flag_matrix, time_array = get_baseline_data(MS, ant1, ant2,'DATA', apply_flag=True)
-        chan_array = get_chann_array_from_MS(MS)
-
-        wf.msutil.close_MS_object(MS)
-
-        pol_array = np.array(['XX', 'YY'])
-
-        #Create a WF object
-        WFd1 = wf.core.WFdata(data_array = flag_matrix,
-                        time_array = time_array,
-                        chan_array = chan_array,
-                        pol_array = pol_array)
-
-        #Quick&dirty plot
-        #wf.visutil.quick_and_dirty_plot(WFd1, plot_phase=phase_plots)
-
-        #=== Second test MS (large one) ===
-
-        mspath = working_dir + '1630519596-1934_638-allflag.ms'
-
-        MS = wf.msutil.create_MS_object(mspath)
-
-        flag_matrix, time_array = get_baseline_data(MS, ant1, ant2,'DATA', apply_flag=True)
-        chan_array = get_chann_array_from_MS(MS)
-
-        wf.msutil.close_MS_object(MS)
-
-        pol_array = np.array(['XX', 'YY'])
-
-        #Create a WF object
-        WFd2 = wf.core.WFdata(data_array = flag_matrix,
-                        time_array = time_array,
-                        chan_array = chan_array,
-                        pol_array = pol_array)
-
-        #Quick&dirty plot
-        #wf.visutil.quick_and_dirty_plot(WFd2, plot_phase=phase_plots)
-
-        #=== Combine the two WFdata ====
-        WFd_to_merge_list = [WFd1, WFd2]
-
-        merged_WFd = wf.core.merge_WFdata(WFd_to_merge_list)
-
-        #Quick&dirty plot
-        wf.visutil.quick_and_dirty_plot(merged_WFd, plot_phase=phase_plots)
-
-    #=== Select field in WFdata test ===
-    if query_field_test:
-
-        working_dir = '/home/krozgonyi/CNSS_and_VLASS_resources/test_data/'
-        input_MS = 'TSKY0001.sb34339757.eb34342285.58002.94765369213.ms'
-
-        mspath = working_dir + input_MS
-
-        #=== Generate the WFd object
-        MS = wf.msutil.create_MS_object(mspath)
-
-        #Select antennas
-        antname_dict = wf.msutil.get_antname_and_ID_dict_from_MS(MS)
-
-        #exit()
-
-        for ant_name in antname_dict:
-            vis_matrix, time_array = wf.msutil.get_baseline_data(MS,
-                                        ant1=antname_dict[ant_name],
-                                        ant2=antname_dict['ea27'],
-                                        qcolumn='DATA',
-                                        apply_flag=False,
-                                        scan_ID_list=[8,11],
-                                        field_ID_list=[6,7,28])
-
-            chan_array = wf.msutil.get_chann_array_from_MS(MS)
-
-            wf.msutil.close_MS_object(MS)
-
-            pol_array = np.array(['XX', 'XY', 'YX', 'YY'])
-
-            #Create a WF object
-            WFd = wf.core.WFdata(data_array = vis_matrix,
-                            time_array = time_array,
-                            chan_array = chan_array,
-                            pol_array = pol_array)
-
-            #Plot the waterfall plots
-            #wf.visutil.quick_and_dirty_plot(WFd, plot_phase=False)
-            wf.visutil.quick_and_dirty_plot(WFd, plot_phase=True)
-
-
-
-
+    pass

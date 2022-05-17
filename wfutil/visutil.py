@@ -4,7 +4,8 @@ This library contains wrapper functions to wisualize `WFdata` objects.
 Mostly waterfall plots
 """
 
-__all__ = ['quick_and_dirty_plot']
+__all__ = ['quick_and_dirty_plot', 'simple_plot_WFD_slice',
+            'plot_flag_fraction_for_sant']
 
 import os
 import copy
@@ -55,7 +56,7 @@ c3 = '#FDE724';#Yellow
 #=== Functions ===
 def quick_and_dirty_plot(WFD,
                         plot_phase=False,
-                        savefig=False,
+                        save_fig=False,
                         fname='./test_flag_fraction_matrix.png',
                         ptitle=None,
                         ctitle=None):
@@ -115,7 +116,7 @@ def quick_and_dirty_plot(WFD,
     plt.xlabel(r'Channel', fontsize = 18)
     plt.ylabel(r'Time', fontsize = 18)
     
-    if savefig:
+    if save_fig:
         plt.savefig(fname, bbox_inches='tight')
     else:
         plt.show()
@@ -129,6 +130,16 @@ def plot_flag_fraction_for_sant(WFD,
                                 recalculate_mask=False,
                                 flag_treshold=0.66):
     """Create diagnostics plots for the crosscol flag fractions or the derived flags
+    
+    Parameters:
+    ===========
+    recalculate_mask: bool, optional
+        If true, the mask is re-calculated based on the threshold provided by the
+        `flag_threshold` parameter
+
+    Returns:
+    ========
+    Create a plot to show
     """
     #Get polarisation axis
     N_pol = np.size(WFD.pol_array)
@@ -171,9 +182,73 @@ def plot_flag_fraction_for_sant(WFD,
         #plt.tight_layout()
         plt.show()
 
+def simple_plot_WFD_slice(WFD,
+                axis='Time',
+                use_index=True,
+                pol_val=0,
+                time_val=0,
+                chan_val=0,
+                plot_phase=False,
+                physical_xax=False,
+                save_fig=False,
+                fname='./test_WFD_slice.png',
+                ptitle=None):
+    """Quick&Dirty plot function for plotting a single 1D slice from the WFDdata
+    
+    For the description of the parameters: `axis`, `use_index`, `pol_val`,
+    `time_val`, `chan_val` see the `get_axis_array_from_string()` function from
+    `wfutil.core`
+
+    Parameters:
+    ===========
+    physical_xax: bool, optional
+        If True the physical valuse of the selected axis are used as the xaxis
+        values. Else, the data index is used.
+
+    Returns:
+    ========
+    Create a plot to show
+    """
+    #Check if slice is valid
+
+    fig, ax = plt.subplots(1, 1, figsize=(9,6.))
+
+    if ptitle != None:
+        fig.suptitle('{0:s}'.format(ptitle), fontsize = 18)
+
+    #Get the complex visibility data
+    data_slice = WFD.get_axis_slice(axis=axis,
+                        use_index=use_index,
+                        time_val=time_val,
+                        chan_val=chan_val,
+                        pol_val=pol_val)
+
+    ax_val = WFD.get_axis_array_from_string(axis)
+
+    if plot_phase:
+        data_slice = np.angle(data_slice)
+        plt.ylabel(r'Visibility phase', fontsize = 18)
+
+    else:
+        data_slice = np.absolute(data_slice)
+        plt.ylabel(r'Visibility amplitude', fontsize = 18)
+
+    if physical_xax:
+        plt.step(ax_val, data_slice,lw=2.5,c=c1)
+    else:
+        plt.step(range(0,len(data_slice)), data_slice,lw=2.5,c=c1)
+
+    plt.xlabel(axis, fontsize = 18)
+    
+    if save_fig:
+        plt.savefig(fname, bbox_inches='tight')
+    else:
+        plt.show()
+
+    plt.close()
+
 #*******************************************************************************
 #=== MAIN ===
 if __name__ == "__main__":
     pass
 
-    #exit()

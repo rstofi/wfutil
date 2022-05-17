@@ -42,12 +42,13 @@ global _SUPPORTED_DATA_FRAMES
 global _SUPPORTED_TIME_FRAMES
 global _SUPPORTED_CAN_FRAMES
 global _SUPPORTED_POL_FRAMES
-
+global _SUPPORTED_WFD_SLICES
 
 _SUPPORTED_DATA_FRAMES = ['CGain','Flag']
 _SUPPORTED_TIME_FRAMES = ['MJD', 'UNIX']
 _SUPPORTED_CAN_FRAMES = ['freq', 'vel']
 _SUPPORTED_POL_FRAMES = ['XY', 'Stokes', 'Intensity']
+_SUPPORTED_WFD_SLICES = ['Pol', 'Time', 'Chan']
 
 #*******************************************************************************
 #=== Functions I ===
@@ -350,15 +351,6 @@ class WFdata(object):
                 time_array,
                 chan_array,
                 wf_desc = None):
-        #        wf_desc = {'Masked' : 'False',
-        #            'DataUnit' : 'amp',
-        #            'TimeUnit' : 's',
-        #            'ChanUnit' : 'Hz',
-        #            'PolUnit' : 'Cm^-2',
-        #            'DataFrame' : 'CGain',
-        #            'TimeFrame' : 'UNIX',
-        #            'ChanFrame' :'freq',
-        #            'PolFrame': 'XY'}):
 
         #Set up instances
         self.data_array = data_array
@@ -434,13 +426,67 @@ WF description (wf_descr)!'.format(WF_DESC))
                 pass
 
     #=== Functions ===
-    def get_pol_slice(self,pol_val):
+    def get_pol_wfd(self,pol_val):
         """Routine to sub-select a polariastion from the `data_array` 
         """
         p = np.where(self.pol_array == pol_val)[0][0]
         pol_slice_data_array = self.data_array[p,...]
 
         return pol_slice_data_array
+
+    def get_axis_array_from_string(self,axis='Time'):
+        """Select axis array based on name
+        """
+        if axis not in _SUPPORTED_WFD_SLICES:
+            raise ValueError('Not supported axis: {0:s}!'.format(axis_slice))
+
+        if axis == 'Pol':
+            return self.pol_array
+        if axis == 'Time':
+            return self.time_array
+        if axis == 'Chan':
+            return self.chan_array
+
+    def get_axis_slice(self,axis='Time', use_index=True,
+                        pol_val=0, time_val=0, chan_val=0):
+        """Routine to select a 1D slice from the `data_array` based on indeces or
+        physical values. Any 1D sub-array could be selected from the data.
+
+        Parameters:
+        ===========
+        axis: str, optional
+            Axis of the slice, i.e. if the `axis` is set to `Time` the function returns
+            a 1D time-slice.
+
+        use_index: bool, optional
+            If True, data indicis are used for selecting the slice, otherwise physical
+            values could be used to select the data.
+
+        pol_val, time_val, cahn_val:
+            The axis values in index or physical value format used for data selection
+
+        Returns:
+        ========
+        1D data array slice
+        """
+        if axis not in _SUPPORTED_WFD_SLICES:
+            raise ValueError('Not supported axis: {0:s}!'.format(axis_slice))
+
+        if not use_index:
+            p = np.where(self.pol_array == pol_val)[0][0]
+            t = np.where(self.time_array == time_val)[0][0]
+            c = np.where(self.chan_array == chan_val)[0][0]
+        else:
+            p = pol_val
+            t = time_val
+            c = chan_val
+
+        if axis == 'Pol':
+            return self.data_array[:,t,c]
+        if axis == 'Time':
+            return self.data_array[p,:,c]
+        if axis == 'Chan':
+            return self.data_array[p,t,:]
 
     def add_wfdesc_item(self,desc_key, desc_val):
         """Add a key-value pair to the `wf_desc` instance dictionary
@@ -715,7 +761,7 @@ with size {1:d} and pol frame of {2:s}!'.format(i, np.size(WFD.pol_array),
     for pol_val in merged_WFdata.pol_array:
         #Get the pol data slice
 
-        merged_data_array_pol_slice = merged_WFdata.get_pol_slice(pol_val)
+        merged_data_array_pol_slice = merged_WFdata.get_pol_wfd(pol_val)
 
         #print(merged_data_array_pol_slice)
 
@@ -723,7 +769,7 @@ with size {1:d} and pol frame of {2:s}!'.format(i, np.size(WFD.pol_array),
         data_arrays_to_map = []
 
         for WFD in WFdata_to_merge_list:
-            WFD_data_array_pol_slice = WFD.get_pol_slice(pol_val)
+            WFD_data_array_pol_slice = WFD.get_pol_wfd(pol_val)
             data_arrays_to_map.append(WFD_data_array_pol_slice)
 
 
@@ -745,220 +791,3 @@ with size {1:d} and pol frame of {2:s}!'.format(i, np.size(WFD.pol_array),
 #=== MAIN ===
 if __name__ == "__main__":
     pass
-
-    exit()
-
-#*******************************************************************************
-    #=== Quick and dirty testing ===
-
-    #TO DO write real testing module
-
-    #Quick and dirty testing
-    test_saving = False
-    test_map_and_merge = False
-    test_map_data_arrays = False
-    test_merge_WFdata = False
-    test_add_wfdesc_item = False
-    test_apply_mask = False
-
-    if test_apply_mask:
-        d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
-        m1 = np.array([[[True,False],[False,False]],
-                        [[False,True],[False,False]]])
-
-        d1 = ma.masked_array(d1,m1)
-
-        p1 = np.array(['a','b'])
-        t1 = np.array([1,2])
-        c1 = np.array([1,3])
-
-        WFd1 = WFdata(data_array = d1,
-                    time_array = t1,
-                    chan_array = c1,
-                    pol_array = p1)
-
-
-        print(WFd1.wf_desc['Masked'], type(WFd1.data_array))
-        print(WFd1.data_array)
-
-        m2 = np.array([[[False,True],[False,False]],
-                        [[False,True],[False,False]]])
-
-        WFd1.apply_mask(m2)
-
-        print(WFd1.wf_desc['Masked'], type(WFd1.data_array))
-        print(WFd1.data_array)
-
-
-    if test_add_wfdesc_item:
-        d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
-        m1 = np.array([[[True,False],[False,False]],
-                        [[False,True],[False,False]]])
-
-        d1 = ma.masked_array(d1,m1)
-
-        p1 = np.array(['a','b'])
-        t1 = np.array([1,2])
-        c1 = np.array([1,3])
-
-        WFd1 = WFdata(data_array = d1,
-                    time_array = t1,
-                    chan_array = c1,
-                    pol_array = p1)
-
-        WFd1.add_wfdesc_item('Ant', 'm001')
-
-        print(WFd1.wf_desc['Ant'])
-
-    if test_merge_WFdata:
-
-        #First WFData
-        d1 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
-        m1 = np.array([[[True,False],[False,False]],
-                        [[False,True],[False,False]]])
-
-        d1 = ma.masked_array(d1,m1)
-
-        p1 = np.array(['a','b'])
-        t1 = np.array([1,2])
-        c1 = np.array([1,3])
-
-        WFd1 = WFdata(data_array = d1,
-                    time_array = t1,
-                    chan_array = c1,
-                    pol_array = p1)
-
-        #Second WFData
-        d2 = np.array([[[1,0],[0,1]],[[0,1],[1,0]]])
-        m2 = np.array([[[True,False],[False,False]],
-                        [[False,True],[False,False]]])
-
-        d2 = ma.masked_array(d2,m2)
-
-        p2 = np.array(['a','b'])
-        t2 = np.array([3,4])
-        c2 = np.array([2,3])
-
-        WFd2 = WFdata(data_array = d2,
-                    time_array = t2,
-                    chan_array = c2,
-                    pol_array = p2)
-
-        #Merge them
-        WFd_to_merge_list = [WFd1, WFd2]
-
-        merged_WFd = merge_WFdata(WFd_to_merge_list)
-
-        print(merged_WFd.pol_array)
-        print(merged_WFd.time_array)
-        print(merged_WFd.chan_array)
-        print(merged_WFd.data_array)
-
-
-    #Tests
-    if test_map_data_arrays:
-        
-        d1 = np.array([[1,3,1],[1,1,1]])
-        t1 = np.array([2,1])
-        c1 = np.array([10,20,30])
-
-        d1_mask = np.array([[True, False, False],[False, False, False]])
-
-        d1 = ma.masked_array(d1,d1_mask)
-
-        d2 = np.array([[2,2],[2,0]])
-        t2 = np.array([0,2])
-        c2 = np.array([10,20])
-
-        d2_mask = np.array([[False, False],[False, True]])
-
-        d2 = ma.masked_array(d2,d2_mask)
-
-        d3 = np.array([[4],[5],[4]])
-        t3 = np.array([0,2,4])
-        c3 = np.array([10])
-
-        d3_mask = np.array([[False],[False],[False]]) 
-
-        d3 = ma.masked_array(d3,d3_mask)
-
-        data_arrays_to_map = [d1,d2,d3]
-        time_arrays_to_map = [t1,t2,t3]
-        chan_arrays_to_map = [c1,c2,c3]
-
-        #Create merged axes
-        merged_time, mapped_time_indices = map_and_merge_1D(time_arrays_to_map)
-        merged_chan, mapped_chan_indices = map_and_merge_1D(chan_arrays_to_map)
-
-        #print(mapped_time_indices)
-        #print(mapped_chan_indices)
-
-        #Create merged empty data array
-        merged_darr = ma.masked_array(np.zeros((np.size(merged_time),np.size(merged_chan))))
-
-        #print(merged_time)
-        #print(merged_chan)
-        #print(merged_darr)
-
-        merged_darr = map_data_arrays(merged_data_array=merged_darr,
-                        merged_time_array=merged_time,
-                        merged_chan_array=merged_chan,
-                        data_arrays_to_merge_list=data_arrays_to_map,
-                        time_mapped_index_list=mapped_time_indices,
-                        chan_mapped_index_list=mapped_chan_indices)
-
-        print(merged_darr)
-
-
-    if test_map_and_merge:
-        a = np.array([1,2,5])
-        b = np.array([2,3])
-        c = np.array([4,1])
-
-        arrays_to_map = [a,b,c]
-
-        merged_array, mapped_indices = map_and_merge_1D(arrays_to_map)
-
-        print(type(merged_array), merged_array)
-        print(type(mapped_indices), mapped_indices)
-
-    #Test saving features
-    if test_saving:
-        working_dir = './'
-        test_file_name = 'test'
-
-        datarr = np.array([[[1,1],[1,0],[0,0]],
-                            [[1,0],[0,1],[0,0]]],dtype=complex)
-
-        dmask = np.array([[[True,False],[False,False],[False,False]],
-                [[False,False],[False,False],[False,True]]], dtype=bool)
-
-        masked_datarr = ma.masked_array(datarr,dmask)
-        #masked_datarr = datarr
-
-        tarr = np.array([0,1,2])
-        farr = np.array([0,1])
-        polarr = np.array(['XX','YY'])
-
-        print(type(datarr[0,0]))
-
-        a = WFdata(data_array = masked_datarr,
-                    time_array = tarr,
-                    chan_array = farr,
-                    pol_array = polarr)
-
-        print(type(a.data_array))
-
-        a.save_WFdata(working_dir,test_file_name,overwrite=True)
-
-        b = load_WFdata(working_dir, test_file_name)
-
-        print(type(b.data_array))
-        print(type(b.data_array[0,0,0]))
-        print(type(b.data_array[0,0,1]))
-
-        print(np.shape(b.data_array))
-
-        print(b.data_array[0,...])
-
-        print(ma.getdata(b.data_array[0,...]))

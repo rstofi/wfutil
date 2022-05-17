@@ -30,3 +30,8 @@ def convert_MJD_to_UNIX(time_array):
 
     #Do not return an Astropy Time object but a numpy array
     return unix_time_array.value
+
+#*******************************************************************************
+#=== MAIN ===
+if __name__ == "__main__":
+    pass

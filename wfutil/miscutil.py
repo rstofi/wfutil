@@ -94,6 +94,4 @@ def convert_list_to_string(list_to_convert):
 #*******************************************************************************
 #=== MAIN ===
 if __name__ == "__main__":
-    #pass
-
-    print(convert_list_to_string([1,2.2,'AAAAA']))
+    pass
