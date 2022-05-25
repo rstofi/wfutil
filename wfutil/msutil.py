@@ -556,7 +556,9 @@ def get_baseline_data(mspath, ant1, ant2, qcolumn,
 
 def get_baseline_flag_fraction_data(mspath, sant=None, 
                                     echo_counter=False,
-                                    continue_one_baseline_error=False):
+                                    continue_one_baseline_error=False,
+                                    field_ID_list=None,
+                                    scan_ID_list=None):
     """A wrapper around `get_baseline_data()`. In particular, this routine generates
     waterfall plots for the fraction of baselines flagged (0 = none, 1 = all)
 
@@ -587,6 +589,12 @@ def get_baseline_flag_fraction_data(mspath, sant=None,
 
     continue_one_baseline_error: bool, opt
         If True, the code terminates even if not all baselines are processed
+
+    field_ID_list: list of int, optional
+        A list of field IDs to select. If None, all fields are selected.
+
+    scan_ID_list: list of int, optional
+        A list of scan IDs to select. If None, all scans are selected.
 
     Returns
     =======
@@ -631,7 +639,10 @@ def get_baseline_flag_fraction_data(mspath, sant=None,
         N_b = int((len(unique_ant_name_list) * (len(unique_ant_name_list) - 1)) / 2)
 
     #Get initial data sizes (assuming that this baseline exist!)
-    qarr, tarr = get_baseline_data(MS, ant1=ant1_ID_list[0], ant2=ant1_ID_list[1], qcolumn='FLAG')
+    qarr, tarr = get_baseline_data(MS, ant1=ant1_ID_list[0], ant2=ant1_ID_list[1],
+                                    qcolumn='FLAG',
+                                    field_ID_list=field_ID_list,
+                                    scan_ID_list=scan_ID_list)
 
     if qarr.dtype != bool:
         raise TypeError('Error when reading in boolean mask from MS!')
@@ -668,7 +679,9 @@ def get_baseline_flag_fraction_data(mspath, sant=None,
                     qarr, tarr = get_baseline_data(MS,
                                 ant1=i,
                                 ant2=j,
-                                qcolumn='FLAG')
+                                qcolumn='FLAG',
+                                field_ID_list=field_ID_list,
+                                scan_ID_list=scan_ID_list)
 
                     #Check array sizes but not the individual time stamps
                     if np.shape(frac_qarr) != np.shape(qarr) or np.shape(frac_tarr) !=  np.shape(tarr):
