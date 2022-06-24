@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 from codecs import open
 import os
 import re
@@ -20,6 +20,7 @@ wfutil_version = get_version()
 
 setup(
     name='wfutil',
+    packages=find_packages(),
     version=wfutil_version,
     author='Kristof Rozgonyi',
     author_email='rstofi@gmail.com',

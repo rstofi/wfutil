@@ -3,3 +3,4 @@ matplotlib>=3.5.0
 astropy>=3.2.2
 #cubical>=1.5.11
 python-casacore>=3.4.0
+#cmocean>=2.0

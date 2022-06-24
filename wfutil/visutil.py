@@ -98,7 +98,7 @@ def quick_and_dirty_plot(WFD,
 
     #TO DO add an option to use the masked data as the min max color not only the visible values
 
-    img = ax.matshow(data, cmap='viridis', vmin=np.min(data), vmax=np.max(data))
+    img = ax.matshow(data, vmin=np.min(data), vmax=np.max(data))
 
     cb = plt.colorbar(img, aspect=30, fraction=0.04975, pad=0)
 
@@ -232,6 +232,7 @@ def simple_plot_WFD_slice(WFD,
     else:
         data_slice = np.absolute(data_slice)
         plt.ylabel(r'Visibility amplitude', fontsize = 18)
+        #plt.ylabel(r'Visibility flag fraction', fontsize = 18)
 
     if physical_xax:
         plt.step(ax_val, data_slice,lw=3,c=c1)
